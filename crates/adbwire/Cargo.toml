@@ -1,0 +1,17 @@
+[package]
+name = "adbwire"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+curve25519-dalek = "4"
+sha2 = "0.10"
+hkdf = "0.12"
+aes-gcm = "0.10"
+rand = "0.8"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+rsa = "0.9"
+base64 = "0.22"
+log = "0.4.34"
