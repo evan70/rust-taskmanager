@@ -18,7 +18,7 @@ phone. See `.ai-factory/DESCRIPTION.md` for the full specification.
 - **Networking:** own `adbwire` crate (pairing, TLS, shell); loopback HTTP with a shared token
 - **Database / ORM:** none (settings in a text file, token and adb key in files on the phone)
 - **Build:** PowerShell — `tools/build/build-apk.ps1` (cargo-ndk → javac → d8 → aapt2 → zipalign → apksigner)
-- **Tests:** `cargo test`, 68 `#[test]` functions in 17 files (see `CONTRIBUTING.md`)
+- **Tests:** `cargo test`, 68 `#[test]` functions in 17 files
 
 ## Project Structure
 
@@ -85,7 +85,6 @@ android-rust-taskmanager/
 | Building | `docs/BUILD.md` | toolchain, environment variables, the APK pipeline, desktop preview |
 | Signing | `docs/SIGNING.md` | your own release keystore and fingerprints |
 | Privacy | `PRIVACY.md` | what stays on the phone, and what each permission is for |
-| Contributing | `CONTRIBUTING.md` | `cargo test`, code style, keep apps free of network access and tracking |
 | Security | `SECURITY.md` | how to report a vulnerability privately |
 | Third party | `THIRD_PARTY.md` | licences of everything shipped |
 | Project spec | `.ai-factory/DESCRIPTION.md` | stack, architecture notes, non-functional requirements |

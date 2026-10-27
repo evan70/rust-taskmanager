@@ -89,9 +89,10 @@ Two things worth knowing about how these are wired:
 - `cargo clippy` with `-D warnings` is the lint gate (`make lint`). It is clean today, so a new
   warning fails the gate.
 
-`CONTRIBUTING.md` asks for a test for every behaviour you add or fix. The tests cover parsing and
-decision helpers (they are pure functions on purpose), not the UI: 59 tests in total — 27 in the app,
-17 in `adbwire`, 4 in `heartnet-kit`, 5 in `rust-sysmon` and 6 in `phone-shared`.
+A behaviour you add or fix gets a test. The tests cover parsing and decision helpers (they are pure
+functions on purpose), not the UI: 68 tests in total — 23 in the app, 17 in `adbwire`, 6 in `domain`,
+5 in `linux-proc`, 4 in `heartnet-kit`, 2 in `platform-linux`, 5 in `rust-sysmon` and 6 in
+`phone-shared`.
 
 ## Building the APK
 
