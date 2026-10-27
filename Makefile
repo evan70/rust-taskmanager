@@ -23,6 +23,8 @@ POWERSHELL      ?= powershell
 APP             ?= apps/taskmanager
 HELPER_DIR      ?= helper
 HELPER_MANIFEST ?= $(HELPER_DIR)/Cargo.toml
+# The Android API level the APK is built against (tools/build/build-apk.ps1: --platform 30).
+ANDROID_API     ?= 30
 
 # --- Git ---
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -96,6 +98,22 @@ fmt-check: ## Check formatting without changing files (CI)
 helper: ## Build the on-phone helper for arm64 Android (needs cargo-ndk and the NDK)
 	cd $(HELPER_DIR) && $(CARGO) ndk -t arm64-v8a --platform 30 build --release
 
+# The app has code that only exists on Android (`#[cfg(target_os = "android")]`: the JNI glue in
+# sys.rs, the native-activity entry point, heartnet-kit's android module). Nothing else in this file
+# compiles it — `make ci` builds the desktop target and the APK is assembled on Windows — so this is
+# the check that keeps it from rotting. It needs the NDK and nothing else.
+.PHONY: check-android
+check-android: ## Compile the app and the helper for arm64 Android (needs ANDROID_NDK_HOME)
+	@test -n "$${ANDROID_NDK_HOME:-}" || { echo "ANDROID_NDK_HOME is not set (needs NDK r27c — see docs/BUILD.md)"; exit 1; }
+	prebuilt=$$(echo "$$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*)
+	clang="$$prebuilt/bin/aarch64-linux-android$(ANDROID_API)-clang"
+	[ -x "$$clang" ] || { echo "no $$clang — is ANDROID_NDK_HOME a full NDK? (see docs/BUILD.md)"; exit 1; }
+	export CC_aarch64_linux_android="$$clang" CXX_aarch64_linux_android="$$clang++"
+	export AR_aarch64_linux_android="$$prebuilt/bin/llvm-ar"
+	export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$$clang"
+	$(CARGO) build --lib --target aarch64-linux-android $(CARGOFLAGS)
+	cd $(HELPER_DIR) && $(CARGO) build --target aarch64-linux-android $(CARGOFLAGS)
+
 .PHONY: android-check
 android-check: ## Check whether this machine can build the APK, and say what is missing
 	@ok=1
@@ -123,7 +141,7 @@ apk-java: android-check ## Rebuild only the Java/manifest part of the APK (reuse
 # `fmt-check` is deliberately NOT part of `ci`: the existing sources are written in a compact style
 # that rustfmt would rewrite from top to bottom. Run `make fmt` when you decide to adopt rustfmt.
 .PHONY: ci
-ci: lint test-all build ## Run everything CI runs (no Android toolchain needed)
+ci: lint test-all build ## Run everything CI runs on the host (no Android toolchain needed)
 	@echo "ci: all checks passed."
 
 ##@ Cleanup
@@ -146,4 +164,4 @@ help: ## Show this help
 		/^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2} \
 		/^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5)}' $(MAKEFILE_LIST)
 	@echo
-	@echo "Android toolchain targets need PowerShell + the SDK/NDK; everything else is plain cargo."
+	@echo "`check-android` needs the NDK; the APK targets need PowerShell + the SDK too; everything else is plain cargo."

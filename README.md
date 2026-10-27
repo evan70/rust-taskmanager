@@ -44,9 +44,10 @@ Download the APK from the releases page and follow [docs/INSTALL.md](docs/INSTAL
 Needs Rust with the `aarch64-linux-android` target, `cargo-ndk`, the Android SDK (build-tools 34,
 platform 34), NDK r27c and a JDK 17, with `JAVA_HOME`, `ANDROID_HOME` and `ANDROID_NDK_HOME` set to them.
 ```
-make test        # tests for the app and the shared crates
-make test-all    # also the helper's own workspace
-make dev         # run the desktop preview, no phone needed
+make test           # tests for the app and the shared crates
+make test-all       # also the helper's own workspace
+make dev            # run the desktop preview, no phone needed
+make check-android  # compile for arm64 Android (needs the NDK; catches Android-only code)
 ```
 
 A reading of the machine without any UI at all, as text or as JSON:
@@ -63,24 +64,28 @@ cargo test
 powershell -File build-apk.ps1
 ```
 
-`make help` lists every target (`make ci` runs lint, tests and build; `make android-check` says what
-the APK build is missing; `make apk` builds it).
+`make help` lists every target (`make ci` runs lint, tests and build; `make check-android` compiles the
+Android side without the SDK; `make android-check` says what the APK build is missing; `make apk`
+builds it).
 
 APKs are signed with your own key, see [docs/SIGNING.md](docs/SIGNING.md). The whole pipeline, the
 desktop preview and what each tool is for: [docs/BUILD.md](docs/BUILD.md).
 
 ## CI
 
-Every push to `main` and every pull request runs four workflows, in `.github/workflows/`:
+Every push to `main` and every pull request runs five workflows, in `.github/workflows/`:
 [lint](https://github.com/evan70/rust-taskmanager/actions/workflows/lint.yml) (clippy, warnings as
 errors), [tests](https://github.com/evan70/rust-taskmanager/actions/workflows/tests.yml) (on stable
 and beta, plus a coverage report kept as a build artifact),
-[build](https://github.com/evan70/rust-taskmanager/actions/workflows/build.yml) and
+[build](https://github.com/evan70/rust-taskmanager/actions/workflows/build.yml),
+[android](https://github.com/evan70/rust-taskmanager/actions/workflows/android.yml) (compiles the app
+and the helper for arm64 Android, the only place the Android-only code is compiled) and
 [security](https://github.com/evan70/rust-taskmanager/actions/workflows/security.yml) (RustSec
 advisory check on both lockfiles, weekly too, and a dependency review on pull requests).
 
-They run the same `make` targets you run yourself — `make ci` is lint, tests and build. The APK is
-not built in CI: that needs Windows, the Android SDK/NDK and your keystore (see [docs/BUILD.md](docs/BUILD.md)).
+They run the same `make` targets you run yourself — `make ci` is lint, tests and build, and
+`make check-android` is the Android compile. The APK itself is still not built in CI: that needs
+Windows, the Android SDK and your keystore (see [docs/BUILD.md](docs/BUILD.md)).
 
 ## Layout
 

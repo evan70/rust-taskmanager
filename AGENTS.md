@@ -117,6 +117,7 @@ in `apps/taskmanager/` and `tools/build/`.
 | `make lint` | clippy over both workspaces, warnings are errors |
 | `make build` | build the app and the shared crates (debug) |
 | `make dev` | run the desktop preview (no phone, made-up phone data) |
+| `make check-android` | compile the app and the helper for arm64 Android (needs only the NDK) |
 | `make android-check` | say what is missing before attempting an APK build |
 | `make apk` | build the signed APK (needs PowerShell + SDK/NDK) |
 | `make ci` | lint + tests + build — what CI runs |
@@ -135,6 +136,9 @@ written in a compact style that rustfmt would rewrite file by file.
 - Verify changes the way this project does: `make test` (or `make test-all` when the helper is
   involved), `make lint`, and for Android work `make android-check` then `make apk` plus
   `apksigner verify`. `make ci` runs the whole gate.
+- `make ci` never compiles `#[cfg(target_os = "android")]` code. After touching anything the app
+  compiles for the phone (sys.rs, heartnet-kit's android module, the helper, the Java glue), run
+  `make check-android` — CI does, in `.github/workflows/android.yml`.
 - Never add network access, analytics or accounts. `INTERNET` exists for loopback only.
 - Do not touch the build machine's paths in generated binaries: keep the `--remap-path-prefix` lines
   in both build scripts.

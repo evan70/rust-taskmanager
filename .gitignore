@@ -11,6 +11,9 @@ local.properties
 .idea/
 .vscode/
 
+# A local NDK, so `make check-android` can run without a full Android SDK (see docs/BUILD.md).
+.android-ndk/
+
 # Local agent tooling: skills, AI Factory context, MCP server config.
 .agents/
 .ai-factory/

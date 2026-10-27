@@ -37,6 +37,7 @@ The `Makefile` wraps the common ones (`make help` lists everything):
 | `make lint` | `cargo clippy` with warnings as errors, both workspaces |
 | `make build` / `make build-release` | build the app and the shared crates |
 | `make dev` | run the desktop preview |
+| `make check-android` | compile the app and the helper for arm64 Android (needs only the NDK) |
 | `make android-check` | say exactly what the APK build is missing on this machine |
 | `make apk` / `make apk-java` | build the signed APK / only its Java part |
 | `make ci` | lint + tests + build — what CI runs |
@@ -93,6 +94,25 @@ A behaviour you add or fix gets a test. The tests cover parsing and decision hel
 functions on purpose), not the UI: 76 tests in total — 23 in the app, 17 in `adbwire`, 14 in `domain`,
 5 in `linux-proc`, 4 in `heartnet-kit`, 2 in `platform-linux`, 5 in `rust-sysmon` and 6 in
 `phone-shared`.
+
+## Compiling the Android code without the SDK
+
+Some of the app exists only on Android: the JNI glue and the native-activity entry point
+(`#[cfg(target_os = "android")]` in `apps/taskmanager/src/sys.rs`), `crates/heartnet-kit/src/android.rs`,
+and the helper's arm64 build. `make ci` compiles none of it (it builds the desktop target), and the APK
+build needs the SDK, the JDK and PowerShell, so this is the cheap way to keep it honest:
+
+```
+export ANDROID_NDK_HOME=/path/to/android-ndk-r27c
+make check-android
+```
+
+It compiles the app's library (`libtaskmgr.so`) and the helper for `aarch64-linux-android` with the
+NDK's clang, at the API level the APK uses (30). It needs the NDK and the Rust target and nothing else,
+which is why CI runs it on Linux on every push (`.github/workflows/android.yml`).
+
+On a Linux machine that has no SDK, a bare NDK is enough; if you keep one inside the project, put it in
+`.android-ndk/` (gitignored) so `export ANDROID_NDK_HOME=$PWD/.android-ndk/android-ndk-r27c` works.
 
 ## Building the APK
 

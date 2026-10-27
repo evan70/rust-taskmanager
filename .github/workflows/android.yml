@@ -1,0 +1,50 @@
+name: Android
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # The app carries code that exists only on Android (`#[cfg(target_os = "android")]`: the JNI glue
+  # in sys.rs, the native-activity entry point, heartnet-kit's android module). No other job compiles
+  # it: `make ci` builds the desktop target and the APK is assembled on Windows. This job runs the
+  # one target that needs nothing but the NDK, so that code cannot rot unnoticed.
+  compile:
+    name: compile (aarch64-linux-android)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable, with the Android target)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            helper -> target
+
+      # Pinned to the version the APK is built with (docs/BUILD.md): the NDK the runner images ship
+      # is replaced without notice as new versions come out.
+      - name: Install the NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r27c
+
+      - name: Compile for arm64 Android
+        run: make check-android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
