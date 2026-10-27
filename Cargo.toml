@@ -6,6 +6,7 @@ members = [
     "crates/heartnet-kit",
     "crates/adbwire",
     "crates/domain",
+    "crates/linux-proc",
     "crates/platform-linux",
 ]
 

@@ -1428,6 +1428,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
 
 [[package]]
+name = "linux-proc"
+version = "0.1.0"
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2122,6 +2126,7 @@ name = "platform-linux"
 version = "0.1.0"
 dependencies = [
  "domain",
+ "linux-proc",
  "sysinfo",
 ]
 
@@ -2811,6 +2816,7 @@ dependencies = [
  "eframe",
  "heartnet-kit",
  "jni 0.21.1",
+ "linux-proc",
  "log",
  "rand",
  "serde",

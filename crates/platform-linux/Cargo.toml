@@ -7,4 +7,5 @@ repository.workspace = true
 
 [dependencies]
 domain = { path = "../domain" }
+linux-proc = { path = "../linux-proc" }
 sysinfo.workspace = true

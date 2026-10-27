@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 heartnet-kit = { path = "../../crates/heartnet-kit" }
 adbwire = { path = "../../crates/adbwire" }
+linux-proc = { path = "../../crates/linux-proc" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rand = "0.8"

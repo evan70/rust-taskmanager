@@ -18,22 +18,26 @@ use domain::{
     BatteryInfo, BatteryState, CpuInfo, DiskInfo, MemoryInfo, NetworkInfo, Process, Snapshot,
     ThermalZone,
 };
+use linux_proc::{CpuTimes, cpu_percent, cpu_times, load_average, meminfo};
 use sysinfo::{Components, Disks, MINIMUM_CPU_UPDATE_INTERVAL, Networks, System};
 
 const BYTES_PER_MB: u64 = 1024 * 1024;
 const POWER_SUPPLY: &str = "/sys/class/power_supply";
 
-/// Why a reading could not be taken at all. A missing sensor is not one of these: that is a shorter
-/// snapshot, not a failure.
+/// Why a reading could not be taken at all. A missing sensor or battery is not one of these: that is
+/// a shorter snapshot, not a failure.
 #[derive(Debug)]
 pub enum SnapshotError {
     Io(io::Error),
+    /// The kernel would not say how much memory the machine has.
+    NoMemory,
 }
 
 impl fmt::Display for SnapshotError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Io(err) => write!(formatter, "cannot read the machine: {err}"),
+            Self::NoMemory => write!(formatter, "{} is not readable", linux_proc::MEMINFO),
         }
     }
 }
@@ -42,6 +46,7 @@ impl std::error::Error for SnapshotError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Io(err) => Some(err),
+            Self::NoMemory => None,
         }
     }
 }
@@ -54,6 +59,10 @@ impl From<io::Error> for SnapshotError {
 
 /// Takes one reading of the machine.
 pub fn snapshot() -> Result<Snapshot, SnapshotError> {
+    // CPU use is the difference between two readings of /proc/stat, so the first one is taken
+    // before the wait below.
+    let cpu_before = cpu_times();
+
     let mut sys = System::new_all();
     let mut networks = Networks::new_with_refreshed_list();
 
@@ -62,13 +71,14 @@ pub fn snapshot() -> Result<Snapshot, SnapshotError> {
     // percentage and every rate reads 0.
     let start = Instant::now();
     thread::sleep(MINIMUM_CPU_UPDATE_INTERVAL);
+    let cpu_after = cpu_times();
     sys.refresh_all();
     networks.refresh(true);
     let elapsed_seconds = start.elapsed().as_secs_f32().max(f32::EPSILON);
 
     Ok(Snapshot {
-        cpu: cpu_info(&sys),
-        memory: memory_info(&sys),
+        cpu: cpu_info(&cpu_before, &cpu_after),
+        memory: memory_info()?,
         processes: processes(&sys),
         battery: battery()?,
         thermals: thermals(),
@@ -77,32 +87,29 @@ pub fn snapshot() -> Result<Snapshot, SnapshotError> {
     })
 }
 
-fn cpu_info(sys: &System) -> CpuInfo {
+/// `/proc/stat` writes the machine as a whole first and then one line per core, and `/proc/loadavg`
+/// the load average. Both are read by `linux-proc`, the same way the Android app reads them.
+fn cpu_info(before: &[CpuTimes], after: &[CpuTimes]) -> CpuInfo {
+    let percent = |index: usize| match (before.get(index), after.get(index)) {
+        (Some(previous), Some(current)) => cpu_percent(*previous, *current).unwrap_or(0.0),
+        _ => 0.0,
+    };
+
     CpuInfo {
-        total_percent: sys.global_cpu_usage(),
-        cores: sys.cpus().iter().map(|core| core.cpu_usage()).collect(),
-        load_avg: load_avg(),
+        total_percent: percent(0),
+        cores: (1..after.len()).map(percent).collect(),
+        load_avg: load_average().unwrap_or([0.0; 3]),
     }
 }
 
-/// Windows has no load average but the workspace still has to compile there, so it reads as zero.
-#[cfg(unix)]
-fn load_avg() -> [f32; 3] {
-    let avg = System::load_average();
-    [avg.one as f32, avg.five as f32, avg.fifteen as f32]
-}
-
-#[cfg(not(unix))]
-fn load_avg() -> [f32; 3] {
-    [0.0; 3]
-}
-
-fn memory_info(sys: &System) -> MemoryInfo {
-    MemoryInfo {
-        total_mb: sys.total_memory() / BYTES_PER_MB,
-        used_mb: sys.used_memory() / BYTES_PER_MB,
-        available_mb: sys.available_memory() / BYTES_PER_MB,
-    }
+/// `/proc/meminfo`: the same file, read and parsed the same way as the app's basic mode.
+fn memory_info() -> Result<MemoryInfo, SnapshotError> {
+    let mem = meminfo().ok_or(SnapshotError::NoMemory)?;
+    Ok(MemoryInfo {
+        total_mb: mem.total / BYTES_PER_MB,
+        used_mb: mem.used() / BYTES_PER_MB,
+        available_mb: mem.avail / BYTES_PER_MB,
+    })
 }
 
 fn processes(sys: &System) -> Vec<Process> {

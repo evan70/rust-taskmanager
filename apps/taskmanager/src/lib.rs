@@ -14,6 +14,7 @@ mod ui_adv;
 use eframe::egui::{self, Color32, Context, RichText, Sense, Stroke, pos2, vec2};
 use heartnet_kit::settings::Settings;
 use heartnet_kit::theme::{BG, CARD, MUTED, ORANGE};
+use linux_proc::{CpuTimes, Mem, cpu_percent, cpu_times, meminfo, self_cpu_percent};
 use sample::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -238,7 +239,7 @@ impl TaskMgr {
         let now = Instant::now();
         let kv = parse_kv(&self.sys.sample_text());
         let mut s = Sample {
-            mem: read_file("/proc/meminfo").and_then(|t| parse_meminfo(&t)).unwrap_or_else(|| Mem {
+            mem: meminfo().unwrap_or_else(|| Mem {
                 total: get_i64(&kv, "mem_total").unwrap_or(0).max(0) as u64,
                 avail: get_i64(&kv, "mem_avail").unwrap_or(0).max(0) as u64,
                 ..Default::default()
@@ -256,8 +257,8 @@ impl TaskMgr {
         s.net_rx_total = get_i64(&kv, "net_rx").unwrap_or(0).max(0) as u64;
         s.net_tx_total = get_i64(&kv, "net_tx").unwrap_or(0).max(0) as u64;
 
-        let cpu_now = read_file("/proc/stat").map(|t| parse_proc_stat(&t)).unwrap_or_default();
-        let self_ticks = read_file("/proc/self/stat").and_then(|t| parse_self_ticks(&t)).unwrap_or(0);
+        let cpu_now = cpu_times();
+        let self_ticks = linux_proc::self_ticks().unwrap_or(0);
         let ncores = get_i64(&self.device, "cores").unwrap_or(0).clamp(0, 32) as usize;
         let ncores = if ncores == 0 { cpu_now.len().saturating_sub(1) } else { ncores };
         if let Some(prev) = &self.prev {
