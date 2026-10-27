@@ -7,6 +7,9 @@ version-code.txt
 local.properties
 *.log
 .env
+*.rs.bk
+.idea/
+.vscode/
 
 # Local agent tooling: skills, AI Factory context, MCP server config.
 .agents/
