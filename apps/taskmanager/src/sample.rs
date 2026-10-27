@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use domain::{BatteryHealth, BatteryInfo, BatteryState, DiskInfo, MemoryInfo, NetworkInfo, Plugged};
+use domain::{BatteryHealth, BatteryInfo, BatteryState, CpuInfo, DiskInfo, MemoryInfo, NetworkInfo, Plugged};
 
 pub const HISTORY_LEN: usize = 90;
 
@@ -72,10 +72,11 @@ pub fn battery_from_kv(m: &HashMap<String, String>) -> Option<BatteryInfo> {
 
 #[derive(Clone, Default, Debug)]
 pub struct Sample {
+    /// The processor as Android lets an ordinary app see it: the overall load is hidden on some
+    /// phones, the per-core numbers come from `/proc/stat` and `/sys/.../cpufreq`, and the load
+    /// average is only read in detailed mode.
+    pub cpu: CpuInfo,
     pub mem: MemoryInfo,
-    pub cpu_total: Option<f32>,
-    /// Per core: (percent busy if known, current MHz if known, max MHz if known).
-    pub cores: Vec<(Option<f32>, Option<u32>, Option<u32>)>,
     pub self_cpu: f32,
     pub battery: Option<BatteryInfo>,
     pub thermal: i64,
@@ -113,8 +114,8 @@ fn push(q: &mut VecDeque<f32>, v: f32) {
 impl History {
     pub fn add(&mut self, s: &Sample) {
         push(&mut self.mem, s.mem.used_percent());
-        if let Some(c) = s.cpu_total {
-            push(&mut self.cpu, c);
+        if let Some(total) = s.cpu.total_percent {
+            push(&mut self.cpu, total);
         }
         if let Some(t) = s.battery.as_ref().and_then(|b| b.temperature_c) {
             push(&mut self.temp, t);
@@ -252,7 +253,11 @@ mod tests {
     #[test]
     fn history_keeps_only_the_latest_points() {
         let mut h = History::default();
-        let s = Sample { mem: MemoryInfo { total: 100, avail: 50, ..Default::default() }, cpu_total: Some(10.0), ..Default::default() };
+        let s = Sample {
+            mem: MemoryInfo { total: 100, avail: 50, ..Default::default() },
+            cpu: CpuInfo { total_percent: Some(10.0), ..Default::default() },
+            ..Default::default()
+        };
         for _ in 0..HISTORY_LEN + 20 {
             h.add(&s);
         }

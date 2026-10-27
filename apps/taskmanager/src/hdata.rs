@@ -80,7 +80,9 @@ fn push(q: &mut VecDeque<f32>, v: f32) {
 
 impl History {
     pub fn add(&mut self, s: &Snapshot) {
-        push(&mut self.cpu, s.cpu.total_percent);
+        if let Some(total) = s.cpu.total_percent {
+            push(&mut self.cpu, total);
+        }
         push(&mut self.ram, s.mem.used_percent());
         if let Some(t) = celsius_of(&s.thermals, "cpu").or_else(|| celsius_of(&s.thermals, "battery")) {
             push(&mut self.temp, t);
@@ -89,7 +91,9 @@ impl History {
             self.cores = vec![VecDeque::new(); s.cpu.cores.len()];
         }
         for (q, c) in self.cores.iter_mut().zip(&s.cpu.cores) {
-            push(q, c.percent);
+            if let Some(percent) = c.percent {
+                push(q, percent);
+            }
         }
     }
 }
@@ -242,14 +246,20 @@ mod tests {
     #[test]
     fn a_real_snapshot_is_parsed() {
         let s: Snapshot = serde_json::from_str(SNAP).unwrap();
-        assert_eq!(s.cpu.cores, vec![domain::Core { percent: 65.0, mhz: 2016 }, domain::Core { percent: 3.0, mhz: 633 }]);
+        assert_eq!(
+            s.cpu.cores,
+            vec![
+                domain::Core { percent: Some(65.0), mhz: Some(2016), ..Default::default() },
+                domain::Core { percent: Some(3.0), mhz: Some(633), ..Default::default() },
+            ]
+        );
         assert_eq!(s.mem.used_mb(), 5158);
         assert!((s.mem.used_percent() - 45.8).abs() < 0.1);
         assert_eq!(s.mem.swap_used_mb(), 957);
         assert_eq!((celsius_of(&s.thermals, "cpu"), celsius_of(&s.thermals, "skin")), (Some(46.9), None));
         assert_eq!(s.battery.as_ref().unwrap().state, domain::BatteryState::Charging);
         assert_eq!(s.battery.as_ref().unwrap().temperature_c, Some(37.8));
-        assert_eq!((s.cpu.total_percent, s.cpu.load_avg[0]), (26.0, 4.75));
+        assert_eq!((s.cpu.total_percent, s.cpu.load_avg[0]), (Some(26.0), 4.75));
         assert_eq!(s.procs.len(), 2);
     }
 
@@ -258,7 +268,12 @@ mod tests {
         let s: Snapshot = serde_json::from_str(r#"{"warming_up":true}"#).unwrap();
         assert!(s.warming_up && s.procs.is_empty());
         let s: Snapshot = serde_json::from_str(r#"{"cpu":{"total_percent":5.0},"new_field":123}"#).unwrap();
-        assert_eq!(s.cpu.total_percent, 5.0);
+        assert_eq!(s.cpu.total_percent, Some(5.0));
+        // A helper reply that says nothing about a core leaves it blank rather than at zero.
+        let s: Snapshot = serde_json::from_str(r#"{"cpu":{"cores":[{"percent":40.0},{}]}}"#).unwrap();
+        assert_eq!(s.cpu.cores[0].percent, Some(40.0));
+        assert_eq!(s.cpu.cores[0].mhz, None);
+        assert_eq!(s.cpu.cores[1].load_fraction(), None);
     }
 
     #[test]

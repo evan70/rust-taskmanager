@@ -91,7 +91,7 @@ Two things worth knowing about how these are wired:
   warning fails the gate.
 
 A behaviour you add or fix gets a test. The tests cover parsing and decision helpers (they are pure
-functions on purpose), not the UI: 76 tests in total — 23 in the app, 17 in `adbwire`, 14 in `domain`,
+functions on purpose), not the UI: 78 tests in total — 23 in the app, 17 in `adbwire`, 16 in `domain`,
 5 in `linux-proc`, 4 in `heartnet-kit`, 2 in `platform-linux`, 5 in `rust-sysmon` and 6 in
 `phone-shared`.
 

@@ -14,7 +14,7 @@ mod ui_adv;
 use eframe::egui::{self, Color32, Context, RichText, Sense, Stroke, pos2, vec2};
 use heartnet_kit::settings::Settings;
 use heartnet_kit::theme::{BG, CARD, MUTED, ORANGE};
-use domain::{DiskInfo, MemoryInfo};
+use domain::{Core, DiskInfo, MemoryInfo};
 use linux_proc::{CpuTimes, cpu_percent, cpu_times, meminfo, self_cpu_percent};
 use sample::*;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -279,16 +279,18 @@ impl TaskMgr {
             s.network.transmitted_bytes_per_second = rate(prev.tx, s.network.total_transmitted_bytes, dt) as u64;
             s.self_cpu = self_cpu_percent(prev.self_ticks, self_ticks, dt);
             if let (Some(p), Some(c)) = (prev.cpu.first(), cpu_now.first()) {
-                s.cpu_total = cpu_percent(*p, *c);
+                s.cpu.total_percent = cpu_percent(*p, *c);
             }
         }
         for i in 0..ncores {
+            // A phone that hides /proc/stat from apps still shows the clocks it is running at, and one
+            // that hides the clock files still shows the load; a core that reports neither stays blank.
             let load = match (self.prev.as_ref().and_then(|p| p.cpu.get(i + 1)), cpu_now.get(i + 1)) {
                 (Some(p), Some(c)) => cpu_percent(*p, *c),
                 _ => None,
             };
             let mhz = |file: &str| read_file(&format!("/sys/devices/system/cpu/cpu{i}/cpufreq/{file}")).and_then(|t| t.trim().parse::<u32>().ok()).map(|khz| khz / 1000);
-            s.cores.push((load, mhz("scaling_cur_freq"), mhz("cpuinfo_max_freq")));
+            s.cpu.cores.push(Core { percent: load, mhz: mhz("scaling_cur_freq"), max_mhz: mhz("cpuinfo_max_freq") });
         }
 
         self.prev = Some(Prev { at: now, cpu: cpu_now, self_ticks, rx: s.network.total_received_bytes, tx: s.network.total_transmitted_bytes });
@@ -396,7 +398,7 @@ impl TaskMgr {
             });
 
             Self::card(ui, "Processor", |ui| {
-                match s.cpu_total {
+                match s.cpu.total_percent {
                     Some(c) => {
                         ui.label(RichText::new(format!("{c:.0}%")).size(30.0).strong().color(Self::load_color(c)));
                         Self::spark(ui, &self.history.cpu, 100.0, 54.0, ORANGE);
@@ -406,10 +408,10 @@ impl TaskMgr {
                     }
                 }
                 ui.add_space(6.0);
-                for (i, (load, mhz, max)) in s.cores.iter().enumerate() {
+                for (i, core) in s.cpu.cores.iter().enumerate() {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(format!("Core {i}")).monospace().color(MUTED));
-                        let text = match (mhz, load) {
+                        let text = match (core.mhz, core.percent) {
                             (Some(m), Some(l)) => format!("{m} MHz  {l:.0}%"),
                             (Some(m), None) => format!("{m} MHz"),
                             (None, Some(l)) => format!("{l:.0}%"),
@@ -417,12 +419,7 @@ impl TaskMgr {
                         };
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| ui.label(RichText::new(text).monospace()));
                     });
-                    let frac = match (load, mhz, max) {
-                        (Some(l), _, _) => l / 100.0,
-                        (None, Some(m), Some(x)) if *x > 0 => *m as f32 / *x as f32,
-                        _ => 0.0,
-                    };
-                    Self::bar(ui, frac, ORANGE, 5.0);
+                    Self::bar(ui, core.load_fraction().unwrap_or(0.0), ORANGE, 5.0);
                     ui.add_space(3.0);
                 }
                 ui.add_space(4.0);

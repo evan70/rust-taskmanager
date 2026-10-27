@@ -20,21 +20,40 @@ pub struct Snapshot {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct CpuInfo {
-    /// Busy percentage of the machine as a whole.
-    pub total_percent: f32,
+    /// Busy percentage of the machine as a whole; `None` while the machine will not say, which is
+    /// what Android does on phones that hide the processor counters from ordinary apps.
+    pub total_percent: Option<f32>,
     /// One entry per core, in the order the kernel reports them.
     pub cores: Vec<Core>,
     /// Load average over the last 1, 5 and 15 minutes.
     pub load_avg: [f32; 3],
 }
 
-/// One core: how busy it is and how fast it is running.
+/// One core: how busy it is, how fast it is running, and how fast it could run. Every field is
+/// optional because a partial reading is normal: Android hides the counters from ordinary apps, and
+/// some kernels keep their clock files to themselves.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Core {
-    pub percent: f32,
-    /// Current clock in megahertz; 0 when the machine will not say.
-    pub mhz: u32,
+    pub percent: Option<f32>,
+    /// Current clock in megahertz.
+    pub mhz: Option<u32>,
+    /// The highest clock this core reports, for showing how far up the range it is running.
+    pub max_mhz: Option<u32>,
+}
+
+impl Core {
+    /// How full the core's range is: its load when that is known, and otherwise the share of its top
+    /// clock it is running at. `None` when there is nothing to draw.
+    pub fn load_fraction(&self) -> Option<f32> {
+        if let Some(percent) = self.percent {
+            return Some(percent / 100.0);
+        }
+        match (self.mhz, self.max_mhz) {
+            (Some(mhz), Some(max)) if max > 0 => Some(mhz as f32 / max as f32),
+            _ => None,
+        }
+    }
 }
 
 /// Memory and swap, in megabytes. This is the shape the helper sends on the phone and the shape
@@ -379,16 +398,35 @@ mod tests {
     #[test]
     fn a_core_carries_its_own_speed() {
         let cpu = CpuInfo {
-            total_percent: 12.0,
+            total_percent: Some(12.0),
             cores: vec![
-                Core { percent: 10.0, mhz: 2016 },
-                Core { percent: 14.0, mhz: 633 },
+                Core { percent: Some(10.0), mhz: Some(2016), max_mhz: Some(2400) },
+                Core { percent: Some(14.0), mhz: Some(633), ..Default::default() },
             ],
             load_avg: [0.5, 0.4, 0.3],
         };
-        assert_eq!(cpu.cores[1].mhz, 633);
-        assert_eq!((cpu.cores[0].percent, cpu.cores[1].percent), (10.0, 14.0));
+        assert_eq!(cpu.cores[1].mhz, Some(633));
+        assert_eq!((cpu.cores[0].percent, cpu.cores[1].percent), (Some(10.0), Some(14.0)));
         assert_eq!(CpuInfo::default().cores.len(), 0);
+        assert_eq!(CpuInfo::default().total_percent, None, "nothing is known before the first sample");
+    }
+
+    #[test]
+    fn a_core_that_will_not_say_has_nothing_to_draw() {
+        let hidden = Core::default();
+        assert_eq!((hidden.percent, hidden.mhz, hidden.max_mhz), (None, None, None));
+        assert_eq!(hidden.load_fraction(), None);
+    }
+
+    #[test]
+    fn a_core_is_drawn_by_its_load_or_by_how_high_it_is_clocked() {
+        let busy = Core { percent: Some(25.0), mhz: Some(600), max_mhz: Some(2400) };
+        assert_eq!(busy.load_fraction(), Some(0.25), "the load wins when it is known");
+        // A phone that hides the load still shows how far up its range a core is running.
+        let clocked = Core { percent: None, mhz: Some(1200), max_mhz: Some(2400) };
+        assert_eq!(clocked.load_fraction(), Some(0.5));
+        let no_top = Core { percent: None, mhz: Some(1200), ..Default::default() };
+        assert_eq!(no_top.load_fraction(), None, "without a top clock there is no share to show");
     }
 
     #[test]

@@ -97,17 +97,22 @@ fn cpu_info(before: &[CpuTimes], after: &[CpuTimes], sys: &System) -> CpuInfo {
 
     let cores = (1..after.len())
         .map(|index| Core {
-            percent: percent(index),
-            // `sysinfo` reads the clock from /sys/devices/system/cpu/*/cpufreq.
+            percent: Some(percent(index)),
+            // `sysinfo` reads the clock from /sys/devices/system/cpu/*/cpufreq; a kernel that keeps
+            // the file to itself reports 0, which is a clock we do not know rather than a stopped core.
             mhz: sys
                 .cpus()
                 .get(index - 1)
-                .map_or(0, |core| u32::try_from(core.frequency()).unwrap_or(0)),
+                .map(|core| core.frequency())
+                .filter(|khz| *khz > 0)
+                .and_then(|khz| u32::try_from(khz).ok()),
+            // `sysinfo` knows the clock but not the range it came from.
+            max_mhz: None,
         })
         .collect();
 
     CpuInfo {
-        total_percent: percent(0),
+        total_percent: Some(percent(0)),
         cores,
         load_avg: load_average().unwrap_or([0.0; 3]),
     }

@@ -37,18 +37,22 @@ impl TaskMgr {
         let f = self.fahrenheit();
 
         Self::card(ui, "CPU", |ui| {
+            // The helper reads these from the kernel, so they are there even on a phone that hides them
+            // from the app itself; the cards still cope with a reading that has not arrived yet.
+            let total = s.cpu.total_percent.unwrap_or(0.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{:.0}%", s.cpu.total_percent)).size(32.0).strong().color(Self::load_color(s.cpu.total_percent)));
+                ui.label(RichText::new(format!("{total:.0}%")).size(32.0).strong().color(Self::load_color(total)));
                 ui.label(RichText::new(format!("load {}", s.cpu.load_avg.iter().map(|l| format!("{l:.1}")).collect::<Vec<_>>().join(" "))).color(MUTED));
             });
             Self::spark(ui, &hist.cpu, 100.0, 54.0, ORANGE);
             ui.add_space(8.0);
             for (i, c) in s.cpu.cores.iter().enumerate() {
+                let (percent, mhz) = (c.percent.unwrap_or(0.0), c.mhz.unwrap_or(0));
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!("Core {i}")).size(13.0).color(MUTED));
                     ui.add_space(4.0);
-                    ui.allocate_ui(vec2((ui.available_width() - 125.0).max(60.0), 14.0), |ui| Self::bar(ui, c.percent / 100.0, Self::load_color(c.percent), 12.0));
-                    ui.label(RichText::new(format!("{:>3.0}%  {:.1} GHz", c.percent, c.mhz as f32 / 1000.0)).size(13.0).monospace());
+                    ui.allocate_ui(vec2((ui.available_width() - 125.0).max(60.0), 14.0), |ui| Self::bar(ui, c.load_fraction().unwrap_or(0.0), Self::load_color(percent), 12.0));
+                    ui.label(RichText::new(format!("{percent:>3.0}%  {:.1} GHz", mhz as f32 / 1000.0)).size(13.0).monospace());
                 });
             }
         });

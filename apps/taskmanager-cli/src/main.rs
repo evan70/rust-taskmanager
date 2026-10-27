@@ -46,13 +46,15 @@ fn print_json(snapshot: &Snapshot) -> ExitCode {
 
 fn print_text(snapshot: &Snapshot) {
     println!("=== CPU ===");
-    println!("Total: {:.1}%", snapshot.cpu.total_percent);
+    match snapshot.cpu.total_percent {
+        Some(percent) => println!("Total: {percent:.1}%"),
+        None => println!("Total: not reported by this machine"),
+    }
     for (core, info) in snapshot.cpu.cores.iter().enumerate() {
-        if info.mhz > 0 {
-            println!("  Core {core}: {:>5.1}%  {:>5} MHz", info.percent, info.mhz);
-        } else {
-            println!("  Core {core}: {:>5.1}%", info.percent);
-        }
+        // A core reports what it can: its load, its clock, or both.
+        let load = info.percent.map_or("—".to_string(), |percent| format!("{percent:>5.1}%"));
+        let clock = info.mhz.map_or("—".to_string(), |mhz| format!("{mhz:>5} MHz"));
+        println!("  Core {core}: {load}  {clock}");
     }
     let [one, five, fifteen] = snapshot.cpu.load_avg;
     println!("Load: {one:.2} {five:.2} {fifteen:.2}");

@@ -18,7 +18,7 @@ phone. See `.ai-factory/DESCRIPTION.md` for the full specification.
 - **Networking:** own `adbwire` crate (pairing, TLS, shell); loopback HTTP with a shared token
 - **Database / ORM:** none (settings in a text file, token and adb key in files on the phone)
 - **Build:** PowerShell — `tools/build/build-apk.ps1` (cargo-ndk → javac → d8 → aapt2 → zipalign → apksigner)
-- **Tests:** `cargo test`, 76 `#[test]` functions in 17 files
+- **Tests:** `cargo test`, 78 `#[test]` functions in 17 files
 
 ## Project Structure
 
@@ -60,12 +60,12 @@ android-rust-taskmanager/
 | File | Purpose |
 |------|---------|
 | `apps/taskmanager-cli/src/main.rs` | the console front end: one snapshot, top 10 processes by CPU |
-| `crates/domain/src/lib.rs` | `Snapshot`/`CpuInfo`/`MemoryInfo`/`Process`/`BatteryInfo`/`ThermalZone`/`DiskInfo`/`NetworkInfo`, plus `used_percent`, `watts` and `celsius_of` |
+| `crates/domain/src/lib.rs` | `Snapshot`/`CpuInfo`/`Core`/`MemoryInfo`/`Process`/`BatteryInfo`/`ThermalZone`/`DiskInfo`/`NetworkInfo`, plus `used_percent`, `watts`, `load_fraction` and `celsius_of` |
 | `crates/linux-proc/src/lib.rs` | `/proc` readers and parsers: `meminfo`, `cpu_times`, `self_ticks`, `load_average` |
 | `crates/platform-linux/src/lib.rs` | `snapshot()` — the only file that talks to `/proc`, `/sys` and `sysinfo` |
 | `apps/taskmanager/src/lib.rs` | app state (`TaskMgr`), tabs, screens, drawing, `android_main` |
 | `apps/taskmanager/src/sys.rs` | the only place that talks to the phone (`android` and `desktop` modules) |
-| `apps/taskmanager/src/sample.rs` | the app's own reading (`Sample`, `History`); `/proc` parsing is in `linux-proc`, and memory, storage, network and the battery's `bat_*` keys all become `domain` types |
+| `apps/taskmanager/src/sample.rs` | the app's own reading (`Sample`, `History`); `/proc` parsing is in `linux-proc`, and the processor, memory, storage, network and the battery's `bat_*` keys all become `domain` types |
 | `apps/taskmanager/src/hdata.rs` | the helper's replies: cpu, memory, temperatures, battery and processes are the `domain` types (the JSON is written in that shape), plus the app's own extras (history, startup list), sorting, filtering |
 | `apps/taskmanager/src/hclient.rs` | loopback HTTP client and its background threads |
 | `apps/taskmanager/src/adv.rs` | detailed mode: key, pairing, starting the helper, Shizuku, plain-words errors |
