@@ -122,13 +122,20 @@ pub fn summarize_thermal(zones: &[(String, f64)]) -> Thermal {
     t
 }
 
-/// `dumpsys battery` -> (level %, charging, temperature C).
-pub fn parse_battery(text: &str) -> Option<(i64, bool, f64)> {
+/// `dumpsys battery` -> (level %, state, temperature C). The state is spelled the way `domain`
+/// spells it, so the app reads the same word whether the number came from here or from desktop.
+pub fn parse_battery(text: &str) -> Option<(i64, &'static str, f64)> {
     let field = |key: &str| -> Option<i64> { text.lines().find_map(|l| l.trim().strip_prefix(key)?.trim().parse().ok()) };
     let level = field("level:")?;
-    let charging = matches!(field("status:"), Some(2 | 5));
+    let state = match field("status:") {
+        Some(2) => "charging",
+        Some(3) => "discharging",
+        Some(4) => "not_charging",
+        Some(5) => "full",
+        _ => "unknown",
+    };
     let temp = field("temperature:").map_or(0.0, |t| t as f64 / 10.0);
-    Some((level, charging, temp))
+    Some((level, state, temp))
 }
 
 fn meminfo_mb() -> [u64; 5] {
@@ -212,7 +219,8 @@ fn sampler(state: Arc<State>) {
     let mut prev_cpu: Vec<CpuTimes> = read_cpu();
     let mut prev_procs: HashMap<u32, u64> = HashMap::new();
     let mut prev_at = Instant::now();
-    let mut battery: Option<(i64, bool, f64)> = None;
+    // (level %, state, temperature C)
+    let mut battery: Option<(i64, &'static str, f64)> = None;
     let mut battery_at: Option<Instant> = None;
     loop {
         sleep(Duration::from_secs(1));
@@ -234,7 +242,7 @@ fn sampler(state: Arc<State>) {
                     _ => 0.0,
                 };
                 let khz = read_khz(i - 1);
-                format!("{{\"p\":{p:.1},\"mhz\":{}}}", khz / 1000)
+                format!("{{\"percent\":{p:.1},\"mhz\":{}}}", khz / 1000)
             })
             .collect();
         let total = match (prev_cpu.first(), cur.first()) {
@@ -264,22 +272,22 @@ fn sampler(state: Arc<State>) {
         let procs: Vec<String> = rows
             .iter()
             .take(MAX_PROCS)
-            .map(|(c, s)| format!("{{\"pid\":{},\"n\":{},\"cpu\":{c:.1},\"mb\":{},\"thr\":{}}}", s.pid, json_str(&s.name), s.rss_mb, s.threads))
+            .map(|(c, s)| format!("{{\"pid\":{},\"name\":{},\"cpu_percent\":{c:.1},\"memory_mb\":{},\"threads\":{}}}", s.pid, json_str(&s.name), s.rss_mb, s.threads))
             .collect();
 
         let load = fs::read_to_string("/proc/loadavg").unwrap_or_default();
         let load: Vec<&str> = load.split_whitespace().take(3).collect();
         let uptime: f64 = fs::read_to_string("/proc/uptime").ok().and_then(|s| s.split_whitespace().next().and_then(|x| x.parse().ok())).unwrap_or(0.0);
         let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
-        let bat = battery.map_or("null".to_string(), |(l, c, t)| format!("{{\"level\":{l},\"charging\":{c},\"temp\":{t:.1}}}"));
+        let bat = battery.map_or("null".to_string(), |(level, state, temp)| format!("{{\"percent\":{level},\"state\":\"{state}\",\"temperature_c\":{temp:.1}}}"));
 
         let json = format!(
-            "{{\"t\":{now_ms},\"uptime\":{uptime:.0},\"load\":[{}],\"cpu\":{{\"total\":{total:.1},\"cores\":[{}]}},\
+            "{{\"t\":{now_ms},\"uptime\":{uptime:.0},\"cpu\":{{\"total_percent\":{total:.1},\"cores\":[{}],\"load_avg\":[{}]}},\
              \"mem\":{{\"total\":{mt},\"avail\":{ma},\"cached\":{mc},\"swap_total\":{st},\"swap_free\":{sf}}},\
              \"temp\":{{\"cpu\":{},\"gpu\":{},\"battery\":{},\"skin\":{}}},\"battery\":{bat},\
              \"nprocs\":{nprocs},\"procs\":[{}]}}",
-            load.join(","),
             cores.join(","),
+            load.join(","),
             opt(th.cpu),
             opt(th.gpu),
             opt(th.battery),
@@ -508,7 +516,9 @@ mod tests {
     #[test]
     fn battery_dump_is_parsed() {
         let dump = "Current Battery Service state:\n  AC powered: true\n  status: 2\n  level: 61\n  temperature: 343\n";
-        assert_eq!(parse_battery(dump), Some((61, true, 34.3)));
+        assert_eq!(parse_battery(dump), Some((61, "charging", 34.3)));
+        assert_eq!(parse_battery("status: 5\nlevel: 100"), Some((100, "full", 0.0)));
+        assert_eq!(parse_battery("status: 3\nlevel: 40"), Some((40, "discharging", 0.0)));
         assert_eq!(parse_battery("nothing useful"), None);
     }
 

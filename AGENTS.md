@@ -18,7 +18,7 @@ phone. See `.ai-factory/DESCRIPTION.md` for the full specification.
 - **Networking:** own `adbwire` crate (pairing, TLS, shell); loopback HTTP with a shared token
 - **Database / ORM:** none (settings in a text file, token and adb key in files on the phone)
 - **Build:** PowerShell — `tools/build/build-apk.ps1` (cargo-ndk → javac → d8 → aapt2 → zipalign → apksigner)
-- **Tests:** `cargo test`, 69 `#[test]` functions in 17 files
+- **Tests:** `cargo test`, 70 `#[test]` functions in 17 files
 
 ## Project Structure
 
@@ -63,7 +63,7 @@ android-rust-taskmanager/
 | `apps/taskmanager/src/lib.rs` | app state (`TaskMgr`), tabs, screens, drawing, `android_main` |
 | `apps/taskmanager/src/sys.rs` | the only place that talks to the phone (`android` and `desktop` modules) |
 | `apps/taskmanager/src/sample.rs` | the app's own reading (`Sample`, `History`, Java battery); `/proc` parsing is in `linux-proc`, memory is `domain::MemoryInfo` |
-| `apps/taskmanager/src/hdata.rs` | `serde` models of the helper's replies (memory is the same `domain::MemoryInfo`), sorting, filtering |
+| `apps/taskmanager/src/hdata.rs` | the helper's replies: cpu, memory, battery and processes are the `domain` types (the JSON is written in that shape), plus the app's own extras (temperature roles, history, startup list), sorting, filtering |
 | `apps/taskmanager/src/hclient.rs` | loopback HTTP client and its background threads |
 | `apps/taskmanager/src/adv.rs` | detailed mode: key, pairing, starting the helper, Shizuku, plain-words errors |
 | `apps/taskmanager/src/ui_adv.rs` | the detailed-mode screens (processes, startup, setup, sheets) |

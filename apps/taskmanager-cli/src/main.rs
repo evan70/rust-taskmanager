@@ -47,8 +47,12 @@ fn print_json(snapshot: &Snapshot) -> ExitCode {
 fn print_text(snapshot: &Snapshot) {
     println!("=== CPU ===");
     println!("Total: {:.1}%", snapshot.cpu.total_percent);
-    for (core, percent) in snapshot.cpu.cores.iter().enumerate() {
-        println!("  Core {core}: {percent:.1}%");
+    for (core, info) in snapshot.cpu.cores.iter().enumerate() {
+        if info.mhz > 0 {
+            println!("  Core {core}: {:>5.1}%  {:>5} MHz", info.percent, info.mhz);
+        } else {
+            println!("  Core {core}: {:>5.1}%", info.percent);
+        }
     }
     let [one, five, fifteen] = snapshot.cpu.load_avg;
     println!("Load: {one:.2} {five:.2} {fifteen:.2}");
@@ -118,7 +122,10 @@ fn print_text(snapshot: &Snapshot) {
 }
 
 fn print_battery(battery: &BatteryInfo) {
-    println!("{:.0}% ({:?})", battery.percent, battery.state);
+    match battery.temperature_c {
+        Some(celsius) => println!("{:.0}% ({:?}), {celsius:.1} °C", battery.percent, battery.state),
+        None => println!("{:.0}% ({:?})", battery.percent, battery.state),
+    }
 }
 
 fn print_disk(disk: &DiskInfo) {

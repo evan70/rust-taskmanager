@@ -15,7 +15,7 @@ use std::thread;
 use std::time::Instant;
 
 use domain::{
-    BatteryInfo, BatteryState, CpuInfo, DiskInfo, MemoryInfo, NetworkInfo, Process, Snapshot,
+    BatteryInfo, BatteryState, Core, CpuInfo, DiskInfo, MemoryInfo, NetworkInfo, Process, Snapshot,
     ThermalZone,
 };
 use linux_proc::{CpuTimes, cpu_percent, cpu_times, load_average, meminfo};
@@ -77,7 +77,7 @@ pub fn snapshot() -> Result<Snapshot, SnapshotError> {
     let elapsed_seconds = start.elapsed().as_secs_f32().max(f32::EPSILON);
 
     Ok(Snapshot {
-        cpu: cpu_info(&cpu_before, &cpu_after),
+        cpu: cpu_info(&cpu_before, &cpu_after, &sys),
         memory: memory_info()?,
         processes: processes(&sys),
         battery: battery()?,
@@ -89,15 +89,26 @@ pub fn snapshot() -> Result<Snapshot, SnapshotError> {
 
 /// `/proc/stat` writes the machine as a whole first and then one line per core, and `/proc/loadavg`
 /// the load average. Both are read by `linux-proc`, the same way the Android app reads them.
-fn cpu_info(before: &[CpuTimes], after: &[CpuTimes]) -> CpuInfo {
+fn cpu_info(before: &[CpuTimes], after: &[CpuTimes], sys: &System) -> CpuInfo {
     let percent = |index: usize| match (before.get(index), after.get(index)) {
         (Some(previous), Some(current)) => cpu_percent(*previous, *current).unwrap_or(0.0),
         _ => 0.0,
     };
 
+    let cores = (1..after.len())
+        .map(|index| Core {
+            percent: percent(index),
+            // `sysinfo` reads the clock from /sys/devices/system/cpu/*/cpufreq.
+            mhz: sys
+                .cpus()
+                .get(index - 1)
+                .map_or(0, |core| u32::try_from(core.frequency()).unwrap_or(0)),
+        })
+        .collect();
+
     CpuInfo {
         total_percent: percent(0),
-        cores: (1..after.len()).map(percent).collect(),
+        cores,
         load_avg: load_average().unwrap_or([0.0; 3]),
     }
 }
@@ -122,6 +133,7 @@ fn processes(sys: &System) -> Vec<Process> {
             name: process.name().to_string_lossy().into_owned(),
             cpu_percent: process.cpu_usage(),
             memory_mb: process.memory() / BYTES_PER_MB,
+            threads: process.tasks().map_or(1, |tasks| tasks.len() as u32),
         })
         .collect()
 }
@@ -147,7 +159,15 @@ fn battery() -> Result<Option<BatteryInfo>, SnapshotError> {
         };
         let state = read_trim(&dir.join("status"))
             .map_or(BatteryState::Unknown, |status| BatteryState::from_sysfs(&status));
-        return Ok(Some(BatteryInfo { percent, state }));
+        // The kernel reports the battery temperature in tenths of a degree.
+        let temperature_c = read_trim(&dir.join("temp"))
+            .and_then(|value| value.parse::<f32>().ok())
+            .map(|tenths| tenths / 10.0);
+        return Ok(Some(BatteryInfo {
+            percent,
+            state,
+            temperature_c,
+        }));
     }
 
     Ok(None)

@@ -17,14 +17,24 @@ pub struct Snapshot {
     pub networks: Vec<NetworkInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CpuInfo {
     /// Busy percentage of the machine as a whole.
     pub total_percent: f32,
-    /// Busy percentage of each core, in the order the kernel reports them.
-    pub cores: Vec<f32>,
+    /// One entry per core, in the order the kernel reports them.
+    pub cores: Vec<Core>,
     /// Load average over the last 1, 5 and 15 minutes.
     pub load_avg: [f32; 3],
+}
+
+/// One core: how busy it is and how fast it is running.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Core {
+    pub percent: f32,
+    /// Current clock in megahertz; 0 when the machine will not say.
+    pub mhz: u32,
 }
 
 /// Memory and swap, in megabytes. This is the shape the helper sends on the phone and the shape
@@ -68,31 +78,37 @@ impl MemoryInfo {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Process {
     pub pid: u32,
     pub name: String,
     pub cpu_percent: f32,
     pub memory_mb: u64,
+    pub threads: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct BatteryInfo {
-    /// Charge in percent, as the kernel reports it.
+    /// Charge in percent, as the kernel (or Android) reports it.
     pub percent: f32,
     pub state: BatteryState,
+    /// Battery temperature, when the machine reports one.
+    pub temperature_c: Option<f32>,
 }
 
 /// What the battery is doing. `NotCharging` is a battery that is plugged in but deliberately not
 /// taking a charge (Android uses it to hold a charge level); `Unknown` is a kernel that says
 /// something we do not recognise.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum BatteryState {
     Charging,
     Discharging,
     Full,
     NotCharging,
+    #[default]
     Unknown,
 }
 
@@ -193,6 +209,21 @@ mod tests {
         assert_eq!((mem.total, mem.avail, mem.cached), (8192, 2048, 1024));
         assert_eq!(mem.used_mb(), 6144);
         assert_eq!(mem.swap_used_mb(), 3072);
+    }
+
+    #[test]
+    fn a_core_carries_its_own_speed() {
+        let cpu = CpuInfo {
+            total_percent: 12.0,
+            cores: vec![
+                Core { percent: 10.0, mhz: 2016 },
+                Core { percent: 14.0, mhz: 633 },
+            ],
+            load_avg: [0.5, 0.4, 0.3],
+        };
+        assert_eq!(cpu.cores[1].mhz, 633);
+        assert_eq!((cpu.cores[0].percent, cpu.cores[1].percent), (10.0, 14.0));
+        assert_eq!(CpuInfo::default().cores.len(), 0);
     }
 
     #[test]

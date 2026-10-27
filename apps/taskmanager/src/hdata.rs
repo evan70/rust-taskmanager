@@ -1,22 +1,8 @@
 //! What the helper sends, plus the small pieces of logic around it (history, filters, settings).
 
-use domain::MemoryInfo;
+use domain::{BatteryInfo, CpuInfo, MemoryInfo, Process};
 use serde::Deserialize;
 use std::collections::VecDeque;
-
-#[derive(Deserialize, Clone, Default, Debug, PartialEq)]
-#[serde(default)]
-pub struct Core {
-    pub p: f32,
-    pub mhz: u32,
-}
-
-#[derive(Deserialize, Clone, Default, Debug)]
-#[serde(default)]
-pub struct Cpu {
-    pub total: f32,
-    pub cores: Vec<Core>,
-}
 
 #[derive(Deserialize, Clone, Default, Debug)]
 #[serde(default)]
@@ -29,34 +15,15 @@ pub struct Temp {
 
 #[derive(Deserialize, Clone, Default, Debug)]
 #[serde(default)]
-pub struct Battery {
-    pub level: i32,
-    pub charging: bool,
-    pub temp: f32,
-}
-
-#[derive(Deserialize, Clone, Default, Debug)]
-#[serde(default)]
-pub struct Proc {
-    pub pid: u32,
-    pub n: String,
-    pub cpu: f32,
-    pub mb: u64,
-    pub thr: u32,
-}
-
-#[derive(Deserialize, Clone, Default, Debug)]
-#[serde(default)]
 pub struct Snapshot {
     pub warming_up: bool,
     pub uptime: f64,
-    pub load: Vec<f32>,
-    pub cpu: Cpu,
+    pub cpu: CpuInfo,
     pub mem: MemoryInfo,
     pub temp: Temp,
-    pub battery: Option<Battery>,
+    pub battery: Option<BatteryInfo>,
     pub nprocs: u32,
-    pub procs: Vec<Proc>,
+    pub procs: Vec<Process>,
 }
 
 #[derive(Deserialize, Clone, Default, Debug)]
@@ -121,7 +88,7 @@ fn push(q: &mut VecDeque<f32>, v: f32) {
 
 impl History {
     pub fn add(&mut self, s: &Snapshot) {
-        push(&mut self.cpu, s.cpu.total);
+        push(&mut self.cpu, s.cpu.total_percent);
         push(&mut self.ram, s.mem.used_percent());
         if let Some(t) = s.temp.cpu.or(s.temp.battery) {
             push(&mut self.temp, t);
@@ -130,7 +97,7 @@ impl History {
             self.cores = vec![VecDeque::new(); s.cpu.cores.len()];
         }
         for (q, c) in self.cores.iter_mut().zip(&s.cpu.cores) {
-            push(q, c.p);
+            push(q, c.percent);
         }
     }
 }
@@ -145,13 +112,13 @@ pub enum ProcSort {
 }
 
 /// Processes matching `query`, sorted. The helper already sends them busiest-first.
-pub fn sorted_procs<'a>(procs: &'a [Proc], query: &str, sort: ProcSort) -> Vec<&'a Proc> {
+pub fn sorted_procs<'a>(procs: &'a [Process], query: &str, sort: ProcSort) -> Vec<&'a Process> {
     let q = query.trim().to_lowercase();
-    let mut v: Vec<&Proc> = procs.iter().filter(|p| q.is_empty() || p.n.to_lowercase().contains(&q)).collect();
+    let mut v: Vec<&Process> = procs.iter().filter(|p| q.is_empty() || p.name.to_lowercase().contains(&q)).collect();
     match sort {
-        ProcSort::Cpu => v.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal).then(b.mb.cmp(&a.mb))),
-        ProcSort::Ram => v.sort_by_key(|p| std::cmp::Reverse(p.mb)),
-        ProcSort::Name => v.sort_by_key(|p| p.n.to_lowercase()),
+        ProcSort::Cpu => v.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap_or(std::cmp::Ordering::Equal).then(b.memory_mb.cmp(&a.memory_mb))),
+        ProcSort::Ram => v.sort_by_key(|p| std::cmp::Reverse(p.memory_mb)),
+        ProcSort::Name => v.sort_by_key(|p| p.name.to_lowercase()),
     }
     v
 }
@@ -275,20 +242,22 @@ pub fn gb(mb: u64) -> String {
 mod tests {
     use super::*;
 
-    const SNAP: &str = r#"{"t":1,"uptime":1206,"load":[4.75,5.17,4.04],"cpu":{"total":26.0,"cores":[{"p":65.0,"mhz":2016},{"p":3.0,"mhz":633}]},
+    const SNAP: &str = r#"{"t":1,"uptime":1206,"cpu":{"total_percent":26.0,"cores":[{"percent":65.0,"mhz":2016},{"percent":3.0,"mhz":633}],"load_avg":[4.75,5.17,4.04]},
         "mem":{"total":11272,"avail":6114,"cached":4962,"swap_total":12287,"swap_free":11330},
-        "temp":{"cpu":46.9,"gpu":52.9,"battery":37.7,"skin":null},"battery":{"level":100,"charging":true,"temp":37.8},
-        "nprocs":278,"procs":[{"pid":1,"n":"com.miui.gallery","cpu":85.6,"mb":640,"thr":30},{"pid":2,"n":"/system/bin/surfaceflinger","cpu":3.0,"mb":64,"thr":12}]}"#;
+        "temp":{"cpu":46.9,"gpu":52.9,"battery":37.7,"skin":null},"battery":{"percent":100,"state":"charging","temperature_c":37.8},
+        "nprocs":278,"procs":[{"pid":1,"name":"com.miui.gallery","cpu_percent":85.6,"memory_mb":640,"threads":30},{"pid":2,"name":"/system/bin/surfaceflinger","cpu_percent":3.0,"memory_mb":64,"threads":12}]}"#;
 
     #[test]
     fn a_real_snapshot_is_parsed() {
         let s: Snapshot = serde_json::from_str(SNAP).unwrap();
-        assert_eq!(s.cpu.cores, vec![Core { p: 65.0, mhz: 2016 }, Core { p: 3.0, mhz: 633 }]);
+        assert_eq!(s.cpu.cores, vec![domain::Core { percent: 65.0, mhz: 2016 }, domain::Core { percent: 3.0, mhz: 633 }]);
         assert_eq!(s.mem.used_mb(), 5158);
         assert!((s.mem.used_percent() - 45.8).abs() < 0.1);
         assert_eq!(s.mem.swap_used_mb(), 957);
         assert_eq!((s.temp.cpu, s.temp.skin), (Some(46.9), None));
-        assert!(s.battery.as_ref().unwrap().charging);
+        assert_eq!(s.battery.as_ref().unwrap().state, domain::BatteryState::Charging);
+        assert_eq!(s.battery.as_ref().unwrap().temperature_c, Some(37.8));
+        assert_eq!((s.cpu.total_percent, s.cpu.load_avg[0]), (26.0, 4.75));
         assert_eq!(s.procs.len(), 2);
     }
 
@@ -296,8 +265,8 @@ mod tests {
     fn warming_up_and_unknown_fields_do_not_break_parsing() {
         let s: Snapshot = serde_json::from_str(r#"{"warming_up":true}"#).unwrap();
         assert!(s.warming_up && s.procs.is_empty());
-        let s: Snapshot = serde_json::from_str(r#"{"cpu":{"total":5.0},"new_field":123}"#).unwrap();
-        assert_eq!(s.cpu.total, 5.0);
+        let s: Snapshot = serde_json::from_str(r#"{"cpu":{"total_percent":5.0},"new_field":123}"#).unwrap();
+        assert_eq!(s.cpu.total_percent, 5.0);
     }
 
     #[test]
@@ -316,9 +285,9 @@ mod tests {
     #[test]
     fn process_list_filters_and_sorts() {
         let s: Snapshot = serde_json::from_str(SNAP).unwrap();
-        assert_eq!(sorted_procs(&s.procs, "", ProcSort::Cpu)[0].n, "com.miui.gallery");
+        assert_eq!(sorted_procs(&s.procs, "", ProcSort::Cpu)[0].name, "com.miui.gallery");
         assert_eq!(sorted_procs(&s.procs, "SURFACE", ProcSort::Name).len(), 1);
-        assert_eq!(sorted_procs(&s.procs, "", ProcSort::Ram)[0].mb, 640);
+        assert_eq!(sorted_procs(&s.procs, "", ProcSort::Ram)[0].memory_mb, 640);
         assert!(sorted_procs(&s.procs, "nothing", ProcSort::Cpu).is_empty());
     }
 

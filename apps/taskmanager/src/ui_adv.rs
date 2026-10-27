@@ -38,8 +38,8 @@ impl TaskMgr {
 
         Self::card(ui, "CPU", |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{:.0}%", s.cpu.total)).size(32.0).strong().color(Self::load_color(s.cpu.total)));
-                ui.label(RichText::new(format!("load {}", s.load.iter().map(|l| format!("{l:.1}")).collect::<Vec<_>>().join(" "))).color(MUTED));
+                ui.label(RichText::new(format!("{:.0}%", s.cpu.total_percent)).size(32.0).strong().color(Self::load_color(s.cpu.total_percent)));
+                ui.label(RichText::new(format!("load {}", s.cpu.load_avg.iter().map(|l| format!("{l:.1}")).collect::<Vec<_>>().join(" "))).color(MUTED));
             });
             Self::spark(ui, &hist.cpu, 100.0, 54.0, ORANGE);
             ui.add_space(8.0);
@@ -47,8 +47,8 @@ impl TaskMgr {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!("Core {i}")).size(13.0).color(MUTED));
                     ui.add_space(4.0);
-                    ui.allocate_ui(vec2((ui.available_width() - 125.0).max(60.0), 14.0), |ui| Self::bar(ui, c.p / 100.0, Self::load_color(c.p), 12.0));
-                    ui.label(RichText::new(format!("{:>3.0}%  {:.1} GHz", c.p, c.mhz as f32 / 1000.0)).size(13.0).monospace());
+                    ui.allocate_ui(vec2((ui.available_width() - 125.0).max(60.0), 14.0), |ui| Self::bar(ui, c.percent / 100.0, Self::load_color(c.percent), 12.0));
+                    ui.label(RichText::new(format!("{:>3.0}%  {:.1} GHz", c.percent, c.mhz as f32 / 1000.0)).size(13.0).monospace());
                 });
             }
         });
@@ -67,7 +67,7 @@ impl TaskMgr {
 
         Self::card(ui, "Temperatures", |ui| {
             ui.horizontal_wrapped(|ui| {
-                for (name, v) in [("CPU", s.temp.cpu), ("GPU", s.temp.gpu), ("Battery", s.temp.battery.or(s.battery.as_ref().map(|b| b.temp))), ("Skin", s.temp.skin)] {
+                for (name, v) in [("CPU", s.temp.cpu), ("GPU", s.temp.gpu), ("Battery", s.temp.battery.or(s.battery.as_ref().and_then(|b| b.temperature_c))), ("Skin", s.temp.skin)] {
                     if let Some(c) = v {
                         ui.label(RichText::new(name).color(MUTED));
                         let col = match hdata::temp_level(c) {
@@ -112,7 +112,7 @@ impl TaskMgr {
             ui.label(RichText::new(format!("{} total", s.nprocs)).color(MUTED));
         });
         ui.add_space(4.0);
-        let rows: Vec<hdata::Proc> = hdata::sorted_procs(&s.procs, &self.pquery, self.psort).into_iter().cloned().collect();
+        let rows: Vec<domain::Process> = hdata::sorted_procs(&s.procs, &self.pquery, self.psort).into_iter().cloned().collect();
         let mut open = None;
         let row_h = 52.0;
         egui::ScrollArea::vertical().auto_shrink([false; 2]).id_salt("procs").show_rows(ui, row_h, rows.len(), |ui, range| {
@@ -122,9 +122,9 @@ impl TaskMgr {
                 let picked = self.expanded == Some(p.pid);
                 ui.painter().rect_filled(rect, 10.0, if picked { Color32::from_gray(48) } else if resp.is_pointer_button_down_on() { Color32::from_gray(44) } else { CARD });
                 let mid = rect.center().y;
-                ui.painter().text(pos2(rect.left() + 12.0, mid), egui::Align2::LEFT_CENTER, hdata::display_name(&p.n), egui::FontId::proportional(15.0), Color32::from_gray(235));
-                ui.painter().text(pos2(rect.right() - 12.0, mid), egui::Align2::RIGHT_CENTER, format!("{} MB", p.mb), egui::FontId::monospace(14.0), MUTED);
-                ui.painter().text(pos2(rect.right() - 92.0, mid), egui::Align2::RIGHT_CENTER, format!("{:.1}%", p.cpu), egui::FontId::monospace(14.0), Self::load_color(p.cpu * 2.0));
+                ui.painter().text(pos2(rect.left() + 12.0, mid), egui::Align2::LEFT_CENTER, hdata::display_name(&p.name), egui::FontId::proportional(15.0), Color32::from_gray(235));
+                ui.painter().text(pos2(rect.right() - 12.0, mid), egui::Align2::RIGHT_CENTER, format!("{} MB", p.memory_mb), egui::FontId::monospace(14.0), MUTED);
+                ui.painter().text(pos2(rect.right() - 92.0, mid), egui::Align2::RIGHT_CENTER, format!("{:.1}%", p.cpu_percent), egui::FontId::monospace(14.0), Self::load_color(p.cpu_percent * 2.0));
                 if resp.clicked() {
                     open = Some(p.pid);
                 }
@@ -164,16 +164,16 @@ impl TaskMgr {
                         }
                     }
                     Some(p) => {
-                        ui.label(RichText::new(hdata::display_name(&p.n)).size(19.0).strong());
-                        ui.label(RichText::new(&p.n).small().color(MUTED));
+                        ui.label(RichText::new(hdata::display_name(&p.name)).size(19.0).strong());
+                        ui.label(RichText::new(&p.name).small().color(MUTED));
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new(format!("{:.1}% CPU", p.cpu)).strong().color(Self::load_color(p.cpu * 2.0)));
-                            ui.label(RichText::new(format!("{} MB", p.mb)).strong());
-                            ui.label(RichText::new(format!("{} threads \u{b7} pid {}", p.thr, p.pid)).color(MUTED));
+                            ui.label(RichText::new(format!("{:.1}% CPU", p.cpu_percent)).strong().color(Self::load_color(p.cpu_percent * 2.0)));
+                            ui.label(RichText::new(format!("{} MB", p.memory_mb)).strong());
+                            ui.label(RichText::new(format!("{} threads \u{b7} pid {}", p.threads, p.pid)).color(MUTED));
                         });
                         ui.add_space(10.0);
-                        match hdata::package_of(&p.n) {
+                        match hdata::package_of(&p.name) {
                             Some(pkg) => {
                                 let key = format!("stop:{pkg}");
                                 let sure = self.confirm.as_ref().is_some_and(|(k, t)| *k == key && t.elapsed() < Duration::from_secs(6));
