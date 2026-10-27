@@ -149,10 +149,10 @@ impl Worker {
 
     fn key(&self) -> io::Result<AdbKey> {
         let path = self.dir.join("adb-key.pk8");
-        if let Ok(der) = std::fs::read(&path) {
-            if let Ok(k) = AdbKey::from_pkcs8(&der, KEY_NAME) {
-                return Ok(k);
-            }
+        if let Ok(der) = std::fs::read(&path)
+            && let Ok(k) = AdbKey::from_pkcs8(&der, KEY_NAME)
+        {
+            return Ok(k);
         }
         self.set(Step::Pairing, "Making this app's key (a few seconds, once)…");
         let k = AdbKey::generate(KEY_NAME).map_err(|e| io::Error::other(e.to_string()))?;
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn a_code_that_is_not_six_digits_is_refused_before_anything_happens() {
-        let w = Worker { sys: Sys::default(), dir: std::env::temp_dir().join("tm-adv-test"), token: "t".into(), shared: Arc::new(Mutex::new(Status { step: Step::Idle, message: String::new(), log: vec![] })), repaint: Box::new(|| {}) };
+        let w = Worker { sys: Sys, dir: std::env::temp_dir().join("tm-adv-test"), token: "t".into(), shared: Arc::new(Mutex::new(Status { step: Step::Idle, message: String::new(), log: vec![] })), repaint: Box::new(|| {}) };
         assert!(w.pair_and_start("12345").unwrap_err().contains("six digits"));
         assert!(w.pair_and_start("12345a").unwrap_err().contains("six digits"));
     }

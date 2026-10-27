@@ -21,8 +21,6 @@ pub fn read_file(path: &str) -> Option<String> {
 }
 
 #[cfg_attr(not(target_os = "android"), allow(dead_code))]
-
-#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 pub fn parse_boots(lines: Vec<String>) -> Vec<BootRow> {
     lines.iter().filter_map(|l| parse_boot_line(l)).collect()
 }

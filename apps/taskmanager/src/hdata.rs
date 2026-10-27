@@ -171,8 +171,8 @@ pub fn sorted_procs<'a>(procs: &'a [Proc], query: &str, sort: ProcSort) -> Vec<&
     let mut v: Vec<&Proc> = procs.iter().filter(|p| q.is_empty() || p.n.to_lowercase().contains(&q)).collect();
     match sort {
         ProcSort::Cpu => v.sort_by(|a, b| b.cpu.partial_cmp(&a.cpu).unwrap_or(std::cmp::Ordering::Equal).then(b.mb.cmp(&a.mb))),
-        ProcSort::Ram => v.sort_by(|a, b| b.mb.cmp(&a.mb)),
-        ProcSort::Name => v.sort_by(|a, b| a.n.to_lowercase().cmp(&b.n.to_lowercase())),
+        ProcSort::Ram => v.sort_by_key(|p| std::cmp::Reverse(p.mb)),
+        ProcSort::Name => v.sort_by_key(|p| p.n.to_lowercase()),
     }
     v
 }

@@ -121,7 +121,7 @@ fn data_dir() -> PathBuf {
 impl TaskMgr {
     #[cfg(not(target_os = "android"))]
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        Self::build(cc, data_dir(), Sys::default())
+        Self::build(cc, data_dir(), Sys)
     }
 
     fn build(cc: &eframe::CreationContext<'_>, dir: PathBuf, sys: Sys) -> Self {
@@ -237,13 +237,14 @@ impl TaskMgr {
     fn take_sample(&mut self) {
         let now = Instant::now();
         let kv = parse_kv(&self.sys.sample_text());
-        let mut s = Sample::default();
-
-        s.mem = read_file("/proc/meminfo").and_then(|t| parse_meminfo(&t)).unwrap_or_else(|| Mem {
-            total: get_i64(&kv, "mem_total").unwrap_or(0).max(0) as u64,
-            avail: get_i64(&kv, "mem_avail").unwrap_or(0).max(0) as u64,
+        let mut s = Sample {
+            mem: read_file("/proc/meminfo").and_then(|t| parse_meminfo(&t)).unwrap_or_else(|| Mem {
+                total: get_i64(&kv, "mem_total").unwrap_or(0).max(0) as u64,
+                avail: get_i64(&kv, "mem_avail").unwrap_or(0).max(0) as u64,
+                ..Default::default()
+            }),
             ..Default::default()
-        });
+        };
         s.low_memory = get_i64(&kv, "mem_low") == Some(1);
         s.battery = Battery::from_kv(&kv);
         s.thermal = get_i64(&kv, "thermal").unwrap_or(-1);

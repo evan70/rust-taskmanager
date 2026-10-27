@@ -202,7 +202,7 @@ fn thermal_max() -> String {
             if let Some(t) = read_i64(&format!("{}/temp", e.path().display())) {
                 // zones report millidegrees; ignore junk readings
                 let c = t as f64 / 1000.0;
-                if (-20.0..150.0).contains(&c) && max_c.map_or(true, |m| c > m) {
+                if (-20.0..150.0).contains(&c) && max_c.is_none_or(|m| c > m) {
                     max_c = Some(c);
                 }
             }
@@ -329,7 +329,7 @@ impl Watch {
 }
 
 fn by_rss(rows: &mut [Row]) {
-    rows.sort_by(|a, b| b.rss_mb.cmp(&a.rss_mb));
+    rows.sort_by_key(|a| std::cmp::Reverse(a.rss_mb));
 }
 
 fn by_cpu(rows: &mut [Row]) {
@@ -384,7 +384,7 @@ fn pkg_of(proc_name: &str) -> Option<&str> {
 }
 
 fn cmd_ok(args: &[&str]) -> bool {
-    Command::new("cmd").args(args).output().map_or(false, |o| o.status.success())
+    Command::new("cmd").args(args).output().is_ok_and(|o| o.status.success())
 }
 
 fn third_party_pkgs() -> HashSet<String> {
@@ -515,7 +515,7 @@ struct Shared {
 }
 
 fn emit(sh: &Shared, line: &str) -> bool {
-    sh.sink.lock().map_or(false, |mut s| s.write_line(line).is_ok())
+    sh.sink.lock().is_ok_and(|mut s| s.write_line(line).is_ok())
 }
 
 fn now_ts() -> u64 {
@@ -668,11 +668,11 @@ fn main() {
             swt.saturating_sub(swf),
             loadavg(),
         );
-        if n % cfg.slow_every == 0 {
+        if n.is_multiple_of(cfg.slow_every) {
             line += &thermal_max();
         }
         let bat_due = cfg.battery_every > 0
-            && last_bat.map_or(true, |t| t.elapsed().as_secs() >= cfg.battery_every);
+            && last_bat.is_none_or(|t| t.elapsed().as_secs() >= cfg.battery_every);
         if bat_due {
             last_bat = Some(Instant::now());
             if let Some(b) = battery() {

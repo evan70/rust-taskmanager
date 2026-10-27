@@ -245,7 +245,7 @@ fn sampler(state: Arc<State>) {
 
         let [mt, ma, mc, st, sf] = meminfo_mb();
         let th = summarize_thermal(&thermal_zones());
-        if battery_at.map_or(true, |t| t.elapsed() > Duration::from_secs(15)) {
+        if battery_at.is_none_or(|t| t.elapsed() > Duration::from_secs(15)) {
             battery_at = Some(Instant::now());
             battery = Command::new("dumpsys").arg("battery").output().ok().and_then(|o| parse_battery(&String::from_utf8_lossy(&o.stdout)));
         }
@@ -325,7 +325,7 @@ fn role_holders() -> HashMap<String, &'static str> {
         m.insert(p.to_string(), "your keyboard");
     }
     let home = run("cmd", &["package", "resolve-activity", "--brief", "-a", "android.intent.action.MAIN", "-c", "android.intent.category.HOME"]);
-    if let Some(p) = home.lines().filter_map(|l| l.trim().split('/').next()).filter(|p| p.contains('.') && !p.contains(' ')).last() {
+    if let Some(p) = home.lines().filter_map(|l| l.trim().split('/').next()).rfind(|p| p.contains('.') && !p.contains(' ')) {
         m.insert(p.to_string(), "your home screen");
     }
     for (role, why) in [("android.app.role.DIALER", "your phone app"), ("android.app.role.SMS", "your messages app")] {
