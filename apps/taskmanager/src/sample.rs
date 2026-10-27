@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use domain::{DiskInfo, MemoryInfo, NetworkInfo};
+use domain::{BatteryHealth, BatteryInfo, BatteryState, DiskInfo, MemoryInfo, NetworkInfo, Plugged};
 
 pub const HISTORY_LEN: usize = 90;
 
@@ -41,64 +41,31 @@ pub fn thermal_label(status: i64) -> &'static str {
 
 // ---------- battery ----------
 
-#[derive(Clone, Default, Debug, PartialEq)]
-pub struct Battery {
-    pub level: i32,
-    pub charging: bool,
-    pub full: bool,
-    pub plugged: &'static str,
-    pub health: &'static str,
-    pub temp_c: Option<f32>,
-    pub volt_v: Option<f32>,
-    /// Milliamps, always positive; whether it is going in or out comes from `charging`.
-    pub current_ma: Option<f32>,
-    pub cycles: Option<i32>,
-    pub full_in_ms: Option<i64>,
-}
-
-impl Battery {
-    pub fn from_kv(m: &HashMap<String, String>) -> Option<Battery> {
-        let level = get_i64(m, "bat_level")?;
-        let scale = get_i64(m, "bat_scale").filter(|s| *s > 0).unwrap_or(100);
-        let status = get_i64(m, "bat_status").unwrap_or(1);
-        let plugged = match get_i64(m, "bat_plugged").unwrap_or(0) {
-            0 => "",
-            1 => "AC",
-            2 => "USB",
-            4 => "Wireless",
-            _ => "Dock",
-        };
-        let health = match get_i64(m, "bat_health").unwrap_or(1) {
-            2 => "Good",
-            3 => "Overheating",
-            4 => "Dead",
-            5 => "Over voltage",
-            6 => "Failure",
-            7 => "Cold",
-            _ => "Unknown",
-        };
-        Some(Battery {
-            level: (level * 100 / scale) as i32,
-            charging: status == 2,
-            full: status == 5,
-            plugged,
-            health,
-            temp_c: get_i64(m, "bat_temp").map(|t| t as f32 / 10.0),
-            volt_v: get_i64(m, "bat_voltage").filter(|v| *v > 0).map(|v| v as f32 / 1000.0),
-            // some phones report microamps, a few report milliamps; anything beyond 20 A is microamps
-            current_ma: get_i64(m, "bat_current_ua").filter(|c| *c != 0 && *c != i64::MIN).map(|c| {
-                let v = c.unsigned_abs() as f32;
-                if v > 20_000.0 { v / 1000.0 } else { v }
-            }),
-            cycles: get_i64(m, "bat_cycles").filter(|c| *c >= 0).map(|c| c as i32),
-            full_in_ms: get_i64(m, "bat_full_in_ms").filter(|t| *t > 0),
-        })
-    }
-
-    /// Power in watts, when voltage and current are both known.
-    pub fn watts(&self) -> Option<f32> {
-        Some(self.volt_v? * self.current_ma? / 1000.0)
-    }
+/// The battery as the Java side reports it: `bat_*` keys, where a percentage is a level over a
+/// scale, temperatures are tenths of a degree and currents come from whichever property the phone's
+/// `BatteryManager` felt like filling in.
+///
+/// The result is the same `domain::BatteryInfo` the helper's replies and the desktop backend
+/// produce, so a screen that shows a battery only ever sees one shape.
+pub fn battery_from_kv(m: &HashMap<String, String>) -> Option<BatteryInfo> {
+    let level = get_i64(m, "bat_level")?;
+    let scale = get_i64(m, "bat_scale").filter(|s| *s > 0).unwrap_or(100);
+    Some(BatteryInfo {
+        percent: (level * 100 / scale) as f32,
+        state: BatteryState::from_android(get_i64(m, "bat_status").unwrap_or(1)),
+        temperature_c: get_i64(m, "bat_temp").map(|t| t as f32 / 10.0),
+        voltage_mv: get_i64(m, "bat_voltage").filter(|v| *v > 0).map(|v| v as u32),
+        // Some phones report microamps and a few report milliamps; anything beyond 20 A is microamps.
+        // The sign only says which way the current flows, and the state already says that.
+        current_ma: get_i64(m, "bat_current_ua").filter(|c| *c != 0 && *c != i64::MIN).map(|c| {
+            let raw = c.unsigned_abs();
+            (if raw > 20_000 { raw / 1000 } else { raw }) as u32
+        }),
+        cycles: get_i64(m, "bat_cycles").filter(|c| *c >= 0).map(|c| c as u32),
+        health: BatteryHealth::from_android(get_i64(m, "bat_health").unwrap_or(1)),
+        plugged: Plugged::from_android(get_i64(m, "bat_plugged").unwrap_or(0)),
+        full_in_ms: get_i64(m, "bat_full_in_ms").filter(|t| *t > 0).map(|t| t as u64),
+    })
 }
 
 // ---------- the sample ----------
@@ -110,7 +77,7 @@ pub struct Sample {
     /// Per core: (percent busy if known, current MHz if known, max MHz if known).
     pub cores: Vec<(Option<f32>, Option<u32>, Option<u32>)>,
     pub self_cpu: f32,
-    pub battery: Option<Battery>,
+    pub battery: Option<BatteryInfo>,
     pub thermal: i64,
     pub headroom: Option<f64>,
     /// The one volume Android reports to the app: a size and free space, with no name.
@@ -149,7 +116,7 @@ impl History {
         if let Some(c) = s.cpu_total {
             push(&mut self.cpu, c);
         }
-        if let Some(t) = s.battery.as_ref().and_then(|b| b.temp_c) {
+        if let Some(t) = s.battery.as_ref().and_then(|b| b.temperature_c) {
             push(&mut self.temp, t);
         }
         push(&mut self.down, s.network.received_bytes_per_second as f32);
@@ -255,22 +222,24 @@ mod tests {
     #[test]
     fn battery_values_are_made_sensible() {
         let m = parse_kv("bat_level\t57\nbat_scale\t100\nbat_status\t2\nbat_plugged\t1\nbat_health\t2\nbat_temp\t312\nbat_voltage\t4012\nbat_current_ua\t-1500000\nbat_cycles\t88\nbat_full_in_ms\t3600000\n");
-        let b = Battery::from_kv(&m).unwrap();
-        assert_eq!((b.level, b.charging, b.plugged, b.health), (57, true, "AC", "Good"));
-        assert_eq!(b.temp_c, Some(31.2));
-        assert_eq!(b.volt_v, Some(4.012));
-        assert_eq!(b.current_ma, Some(1500.0), "microamps become milliamps, sign dropped");
+        let b = battery_from_kv(&m).unwrap();
+        assert_eq!((b.percent, b.state, b.plugged, b.health), (57.0, BatteryState::Charging, Plugged::Ac, BatteryHealth::Good));
+        assert!(b.is_charging() && !b.is_full());
+        assert_eq!(b.temperature_c, Some(31.2));
+        assert_eq!(b.voltage_mv, Some(4012));
+        assert_eq!(b.current_ma, Some(1500), "microamps become milliamps, sign dropped");
         assert_eq!(b.cycles, Some(88));
         assert!((b.watts().unwrap() - 6.018).abs() < 0.01);
         // a phone that already reports milliamps
         let m = parse_kv("bat_level\t5\nbat_current_ua\t450\n");
-        assert_eq!(Battery::from_kv(&m).unwrap().current_ma, Some(450.0));
+        assert_eq!(battery_from_kv(&m).unwrap().current_ma, Some(450));
         // a battery with a different scale, and missing extras
         let m = parse_kv("bat_level\t50\nbat_scale\t200\n");
-        let b = Battery::from_kv(&m).unwrap();
-        assert_eq!(b.level, 25);
-        assert_eq!((b.temp_c, b.current_ma, b.cycles, b.watts()), (None, None, None, None));
-        assert!(Battery::from_kv(&parse_kv("other\t1")).is_none());
+        let b = battery_from_kv(&m).unwrap();
+        assert_eq!(b.percent, 25.0);
+        assert_eq!((b.temperature_c, b.current_ma, b.cycles, b.watts()), (None, None, None, None));
+        assert_eq!((b.state, b.plugged, b.health), (BatteryState::Unknown, Plugged::None, BatteryHealth::Unknown));
+        assert!(battery_from_kv(&parse_kv("other\t1")).is_none());
     }
 
     #[test]

@@ -325,4 +325,3 @@ mod tests {
         assert_eq!(gb(2048), "2.0 GB");
     }
 }
-

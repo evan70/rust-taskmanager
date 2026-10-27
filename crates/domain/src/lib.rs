@@ -96,6 +96,32 @@ pub struct BatteryInfo {
     pub state: BatteryState,
     /// Battery temperature, when the machine reports one.
     pub temperature_c: Option<f32>,
+    /// Terminal voltage in millivolts.
+    pub voltage_mv: Option<u32>,
+    /// Current in milliamps, always a magnitude: which way it flows is what `state` says.
+    pub current_ma: Option<u32>,
+    /// How many times the battery has been charged, on phones that keep the count.
+    pub cycles: Option<u32>,
+    pub health: BatteryHealth,
+    /// What the phone is plugged into, when it is plugged in at all.
+    pub plugged: Plugged,
+    /// Android's estimate of how long the charge still needs.
+    pub full_in_ms: Option<u64>,
+}
+
+impl BatteryInfo {
+    pub fn is_charging(&self) -> bool {
+        self.state == BatteryState::Charging
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.state == BatteryState::Full
+    }
+
+    /// Power in watts, when both voltage and current are known.
+    pub fn watts(&self) -> Option<f32> {
+        Some(self.voltage_mv? as f32 * self.current_ma? as f32 / 1_000_000.0)
+    }
 }
 
 /// What the battery is doing. `NotCharging` is a battery that is plugged in but deliberately not
@@ -121,6 +147,121 @@ impl BatteryState {
             "Full" => Self::Full,
             "Not charging" => Self::NotCharging,
             _ => Self::Unknown,
+        }
+    }
+
+    /// Reads the state out of Android's `BatteryManager.EXTRA_STATUS`, which counts charges and
+    /// discharges rather than naming them.
+    pub fn from_android(status: i64) -> Self {
+        match status {
+            2 => Self::Charging,
+            3 => Self::Discharging,
+            4 => Self::NotCharging,
+            5 => Self::Full,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// What the state is called on screen. `NotCharging` is a phone that is plugged in and holding
+    /// its level, which the app has always shown as being on battery.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Full => "Full",
+            Self::Charging => "Charging",
+            _ => "On battery",
+        }
+    }
+}
+
+/// What the battery says about itself. `Overheat` and `Cold` are the battery's own temperature
+/// limits, which have nothing to do with the phone's thermal status.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatteryHealth {
+    Good,
+    Overheat,
+    Dead,
+    OverVoltage,
+    Failure,
+    Cold,
+    #[default]
+    Unknown,
+}
+
+impl BatteryHealth {
+    /// Reads the health out of `/sys/class/power_supply/*/health`.
+    pub fn from_sysfs(health: &str) -> Self {
+        match health.trim() {
+            "Good" => Self::Good,
+            "Overheat" | "Hot" => Self::Overheat,
+            "Dead" => Self::Dead,
+            "Over voltage" => Self::OverVoltage,
+            "Unspecified failure" => Self::Failure,
+            "Cold" => Self::Cold,
+            _ => Self::Unknown,
+        }
+    }
+
+    /// Reads the health out of Android's `BatteryManager.EXTRA_HEALTH`.
+    pub fn from_android(health: i64) -> Self {
+        match health {
+            2 => Self::Good,
+            3 => Self::Overheat,
+            4 => Self::Dead,
+            5 => Self::OverVoltage,
+            6 => Self::Failure,
+            7 => Self::Cold,
+            _ => Self::Unknown,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Good => "Good",
+            Self::Overheat => "Overheating",
+            Self::Dead => "Dead",
+            Self::OverVoltage => "Over voltage",
+            Self::Failure => "Failure",
+            Self::Cold => "Cold",
+            Self::Unknown => "Unknown",
+        }
+    }
+}
+
+/// What the phone is plugged into. `/sys` only says whether the supply is online, so only Android
+/// can tell the kinds apart.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Plugged {
+    Ac,
+    Usb,
+    Wireless,
+    Dock,
+    #[default]
+    None,
+}
+
+impl Plugged {
+    /// Reads the plug out of Android's `BatteryManager.EXTRA_PLUGGED`. Every other non-zero value is
+    /// some other dock flag, which the app has always called a dock.
+    pub fn from_android(plugged: i64) -> Self {
+        match plugged {
+            0 => Self::None,
+            1 => Self::Ac,
+            2 => Self::Usb,
+            4 => Self::Wireless,
+            _ => Self::Dock,
+        }
+    }
+
+    /// What the plug is called on screen; nothing at all when the phone is not plugged in.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ac => "AC",
+            Self::Usb => "USB",
+            Self::Wireless => "Wireless",
+            Self::Dock => "Dock",
+            Self::None => "",
         }
     }
 }
@@ -295,5 +436,52 @@ mod tests {
         assert_eq!(BatteryState::from_sysfs("Full"), BatteryState::Full);
         assert_eq!(BatteryState::from_sysfs("Not charging"), BatteryState::NotCharging);
         assert_eq!(BatteryState::from_sysfs("something else"), BatteryState::Unknown);
+    }
+
+    #[test]
+    fn battery_states_and_health_come_from_android_too() {
+        assert_eq!(BatteryState::from_android(2), BatteryState::Charging);
+        assert_eq!(BatteryState::from_android(5), BatteryState::Full);
+        assert_eq!(BatteryState::from_android(1), BatteryState::Unknown);
+        assert_eq!(BatteryHealth::from_android(2), BatteryHealth::Good);
+        assert_eq!(BatteryHealth::from_android(6), BatteryHealth::Failure);
+        assert_eq!(BatteryHealth::from_android(0), BatteryHealth::Unknown);
+    }
+
+    #[test]
+    fn battery_health_comes_from_the_kernel_and_reads_back_as_words() {
+        assert_eq!(BatteryHealth::from_sysfs("Good"), BatteryHealth::Good);
+        assert_eq!(BatteryHealth::from_sysfs("Over voltage"), BatteryHealth::OverVoltage);
+        assert_eq!(BatteryHealth::from_sysfs("Unspecified failure"), BatteryHealth::Failure);
+        assert_eq!(BatteryHealth::from_sysfs("Warm"), BatteryHealth::Unknown);
+        assert_eq!(BatteryHealth::default().label(), "Unknown");
+        assert_eq!(BatteryHealth::Overheat.label(), "Overheating");
+    }
+
+    #[test]
+    fn a_plug_is_named_or_absent() {
+        assert_eq!(Plugged::from_android(0), Plugged::None);
+        assert_eq!(Plugged::from_android(1), Plugged::Ac);
+        assert_eq!(Plugged::from_android(4), Plugged::Wireless);
+        assert_eq!(Plugged::from_android(8), Plugged::Dock);
+        assert_eq!(Plugged::from_android(99), Plugged::Dock);
+        assert_eq!(Plugged::None.label(), "");
+        assert_eq!(Plugged::Usb.label(), "USB");
+        assert_eq!(BatteryState::Charging.label(), "Charging");
+        assert_eq!(BatteryState::NotCharging.label(), "On battery");
+    }
+
+    #[test]
+    fn power_is_volts_times_amps_and_needs_both() {
+        let battery = BatteryInfo {
+            percent: 57.0,
+            state: BatteryState::Charging,
+            voltage_mv: Some(4012),
+            current_ma: Some(1500),
+            ..Default::default()
+        };
+        assert!((battery.watts().unwrap() - 6.018).abs() < 0.001);
+        assert!(battery.is_charging() && !battery.is_full());
+        assert_eq!(BatteryInfo { voltage_mv: None, ..battery }.watts(), None);
     }
 }

@@ -15,8 +15,8 @@ use std::thread;
 use std::time::Instant;
 
 use domain::{
-    BatteryInfo, BatteryState, Core, CpuInfo, DiskInfo, MemoryInfo, NetworkInfo, Process, Snapshot,
-    ThermalZone,
+    BatteryHealth, BatteryInfo, BatteryState, Core, CpuInfo, DiskInfo, MemoryInfo, NetworkInfo,
+    Process, Snapshot, ThermalZone,
 };
 use linux_proc::{CpuTimes, cpu_percent, cpu_times, load_average, meminfo};
 use sysinfo::{Components, Disks, MINIMUM_CPU_UPDATE_INTERVAL, Networks, System};
@@ -163,10 +163,21 @@ fn battery() -> Result<Option<BatteryInfo>, SnapshotError> {
         let temperature_c = read_trim(&dir.join("temp"))
             .and_then(|value| value.parse::<f32>().ok())
             .map(|tenths| tenths / 10.0);
+        let number = |name: &str| read_trim(&dir.join(name)).and_then(|value| value.parse::<i64>().ok());
         return Ok(Some(BatteryInfo {
             percent,
             state,
             temperature_c,
+            // Voltage and current are microvolts and microamps here; the direction of the current
+            // is what `state` says, so only its size is kept. Not every battery reports either.
+            voltage_mv: number("voltage_now").filter(|micro| *micro > 0).map(|micro| (micro / 1000) as u32),
+            current_ma: number("current_now").map(|micro| (micro.unsigned_abs() / 1000) as u32),
+            cycles: number("cycle_count").filter(|count| *count > 0).map(|count| count as u32),
+            health: read_trim(&dir.join("health"))
+                .map_or(BatteryHealth::Unknown, |health| BatteryHealth::from_sysfs(&health)),
+            // What is left is Android's: `/sys` says whether a supply is online, not whether it is a
+            // wall plug or a laptop, and only Android estimates how long a charge still needs.
+            ..Default::default()
         }));
     }
 

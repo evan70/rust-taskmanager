@@ -254,7 +254,7 @@ impl TaskMgr {
             ..Default::default()
         };
         s.low_memory = get_i64(&kv, "mem_low") == Some(1);
-        s.battery = Battery::from_kv(&kv);
+        s.battery = battery_from_kv(&kv);
         s.thermal = get_i64(&kv, "thermal").unwrap_or(-1);
         s.headroom = get_f64(&kv, "headroom");
         s.storage = DiskInfo::from_bytes(
@@ -436,32 +436,37 @@ impl TaskMgr {
             }
             if let Some(b) = &s.battery {
                 Self::card(ui, "Battery", |ui| {
-                    let state = if b.full { "Full".to_string() } else if b.charging { format!("Charging{}", if b.plugged.is_empty() { String::new() } else { format!(" ({})", b.plugged) }) } else { "On battery".to_string() };
+                    let low = b.percent <= 15.0 && !b.is_charging();
+                    let state = if b.is_charging() && !b.plugged.label().is_empty() {
+                        format!("{} ({})", b.state.label(), b.plugged.label())
+                    } else {
+                        b.state.label().to_string()
+                    };
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(format!("{}%", b.level)).size(30.0).strong().color(if b.level <= 15 && !b.charging { BAD } else { GOOD }));
+                        ui.label(RichText::new(format!("{:.0}%", b.percent)).size(30.0).strong().color(if low { BAD } else { GOOD }));
                         ui.label(RichText::new(state).color(MUTED));
                     });
-                    Self::bar(ui, b.level as f32 / 100.0, if b.level <= 15 && !b.charging { BAD } else { GOOD }, 8.0);
+                    Self::bar(ui, b.percent / 100.0, if low { BAD } else { GOOD }, 8.0);
                     ui.add_space(6.0);
-                    if let Some(t) = b.temp_c {
+                    if let Some(t) = b.temperature_c {
                         Self::row(ui, "Temperature", &fmt_temp(t, f));
                         Self::spark(ui, &self.history.temp, 60.0, 40.0, WARN);
                     }
                     if let Some(ma) = b.current_ma {
-                        Self::row(ui, if b.charging { "Charging current" } else { "Drawing" }, &format!("{ma:.0} mA"));
+                        Self::row(ui, if b.is_charging() { "Charging current" } else { "Drawing" }, &format!("{ma} mA"));
                     }
                     if let Some(w) = b.watts() {
                         Self::row(ui, "Power", &format!("{w:.1} W"));
                     }
-                    if let Some(v) = b.volt_v {
-                        Self::row(ui, "Voltage", &format!("{v:.2} V"));
+                    if let Some(mv) = b.voltage_mv {
+                        Self::row(ui, "Voltage", &format!("{:.2} V", mv as f32 / 1000.0));
                     }
-                    Self::row(ui, "Health", b.health);
+                    Self::row(ui, "Health", b.health.label());
                     if let Some(c) = b.cycles {
                         Self::row(ui, "Charge cycles", &c.to_string());
                     }
-                    if let (true, Some(ms)) = (b.charging, b.full_in_ms) {
-                        Self::row(ui, "Full in", &fmt_duration(ms));
+                    if let (true, Some(ms)) = (b.is_charging(), b.full_in_ms) {
+                        Self::row(ui, "Full in", &fmt_duration(ms as i64));
                     }
                     if s.power_save {
                         ui.label(RichText::new("Battery saver is on").color(WARN));
