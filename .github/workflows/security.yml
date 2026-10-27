@@ -1,0 +1,46 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Advisories are published continuously; the weekly run checks the lockfiles without a push.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: cargo audit (RustSec)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # audit-check files an issue when the weekly run finds a vulnerable dependency.
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Both workspaces are covered: the action scans every Cargo.lock it finds, at the repository
+      # root and in helper/.
+      - name: Check Cargo.lock files against the RustSec advisory database
+        # No floating `v2` tag exists for this action: it has to be pinned exactly.
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-review:
+    name: dependency review
+    # This action only has a diff to look at on pull requests.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject pull requests that add a vulnerable dependency
+        uses: actions/dependency-review-action@v4

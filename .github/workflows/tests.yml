@@ -1,0 +1,83 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (Rust ${{ matrix.rust }})
+    runs-on: ubuntu-latest
+    strategy:
+      # One broken toolchain should not hide the result of the other.
+      fail-fast: false
+      matrix:
+        # The repository declares no `rust-version`, so there is no minimum to test against: the
+        # helper needs 1.87 for `u64::is_multiple_of`, but the dependency tree (eframe/egui) has its
+        # own floor that is not recorded anywhere. stable + beta is what can be honoured today;
+        # adding a pinned lowest version means adding `rust-version` to the manifests first.
+        rust: [stable, beta]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust ${{ matrix.rust }}
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            helper -> target
+
+      - name: Tests (app and shared crates)
+        run: make test
+
+      # Separate workspace: `cargo test` in helper/ alone would skip helper/shared (phone-shared).
+      - name: Tests (helper)
+        run: make test-helper
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable, with llvm-tools)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            helper -> target
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Coverage (app and shared crates)
+        run: cargo llvm-cov --workspace --lcov --output-path lcov-root.info
+
+      - name: Coverage (helper)
+        run: cd helper && cargo llvm-cov --workspace --lcov --output-path ../lcov-helper.info
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-lcov
+          path: lcov-*.info
+          if-no-files-found: error

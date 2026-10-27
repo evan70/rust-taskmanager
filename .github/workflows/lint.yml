@@ -1,0 +1,41 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            helper -> target
+
+      # `make lint` is `cargo clippy --workspace --all-targets -- -D warnings` in both workspaces
+      # (root: the app and the shared crates; helper/: rust-sysmon and phone-shared).
+      - name: Clippy (both workspaces, warnings are errors)
+        run: make lint
+
+      # `cargo fmt --check` is deliberately not run: the existing sources use a compact style that
+      # rustfmt would rewrite completely. See the `ci` target in the Makefile.

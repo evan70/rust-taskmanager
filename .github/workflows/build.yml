@@ -1,0 +1,45 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            helper -> target
+
+      # Debug build on purpose: the release profile uses LTO with one codegen unit, which is far too
+      # slow to be worth running on every push.
+      - name: Build (app and shared crates)
+        run: make build
+
+      # The helper's release binary is built for arm64 Android by the PowerShell script
+      # (tools/build/build-apk.ps1, needs cargo-ndk + the NDK). Here the host build is enough to
+      # catch anything that breaks compilation.
+      - name: Build (helper, host target)
+        run: cd helper && cargo build --workspace
+
+      # The APK itself is not assembled in CI: that path needs Windows, the Android SDK/NDK, JDK 17
+      # and the release keystore. See docs/BUILD.md and docs/SIGNING.md.
