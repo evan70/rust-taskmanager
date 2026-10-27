@@ -18,18 +18,28 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # audit-check files an issue when the weekly run finds a vulnerable dependency.
+      # audit-check reports the result through a check run, so `checks: write` is not optional: without
+      # it the action dies with "Resource not accessible by integration" instead of failing the job.
+      checks: write
+      # …and on the weekly run it files an issue about what it found.
       issues: write
     steps:
       - uses: actions/checkout@v4
 
-      # Both workspaces are covered: the action scans every Cargo.lock it finds, at the repository
-      # root and in helper/.
-      - name: Check Cargo.lock files against the RustSec advisory database
+      # One invocation audits one lockfile, and the helper is its own workspace, so it needs its own
+      # step. `.cargo/audit.toml` holds the advisories that are knowingly accepted, each with its
+      # reason, and is read by a plain `cargo audit` too.
+      - name: Check Cargo.lock against the RustSec advisory database
         # No floating `v2` tag exists for this action: it has to be pinned exactly.
         uses: rustsec/audit-check@v2.0.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check helper/Cargo.lock against the RustSec advisory database
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: helper
 
   dependency-review:
     name: dependency review

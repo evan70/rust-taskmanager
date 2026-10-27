@@ -1,0 +1,16 @@
+# cargo-audit's policy for this repository: `cargo audit` reads it here, and the `audit` job in
+# .github/workflows/security.yml runs the same tool against the same lockfiles.
+#
+# Anything not listed below is expected to be clean — the list is for advisories that cannot be fixed
+# today, and each one needs its reason written next to it.
+
+[advisories]
+# RUSTSEC-2023-0071, "Marvin attack" in `rsa` 0.9: timing side channels in the crate's RSA private-key
+# operations. No patched release exists (`patched = []`), so there is nothing to upgrade to.
+#
+# `adbwire` (the ADB client in crates/adbwire) pulls `rsa` in for the ADB key pair only: generating it,
+# reading and writing its PKCS#8 DER, and taking the modulus and exponent for the OpenSSH public key.
+# It never signs with that key — the client certificate is signed by rcgen and the TLS handshake by
+# rustls, both through ring — so no RSA private-key operation goes through the crate the advisory is
+# about. Dropping it instead would mean dropping RSA key generation, which ring cannot do.
+ignore = ["RUSTSEC-2023-0071"]

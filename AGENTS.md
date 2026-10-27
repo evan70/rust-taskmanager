@@ -44,6 +44,9 @@ android-rust-taskmanager/
 ├── tools/build/build-apk.ps1    the shared APK build for all Heartnet apps
 ├── Makefile                     everyday commands (test, lint, build, dev, apk, ci)
 ├── docs/                        INSTALL.md, DETAILED-MODE.md, BUILD.md, SIGNING.md
+├── .github/workflows/           CI: lint, tests, build, android (compiles for the phone) and security
+├── .cargo/audit.toml            cargo-audit policy: the advisories knowingly accepted, each with its
+│                                reason (read by `cargo audit` and by the security workflow)
 ├── .agents/skills/              agent skills: the aif-* suite, installed community skills, and this
 │                                project's own heartnet-android-app
 ├── .ai-factory/                 AI Factory context (config.yaml, DESCRIPTION.md, ARCHITECTURE.md,
