@@ -49,6 +49,13 @@ make test-all    # also the helper's own workspace
 make dev         # run the desktop preview, no phone needed
 ```
 
+A reading of the machine without any UI at all, as text or as JSON:
+
+```
+cargo run -p taskmanager-cli
+cargo run -p taskmanager-cli -- --json
+```
+
 For an APK, from `apps/taskmanager` (Windows PowerShell):
 
 ```
@@ -79,7 +86,8 @@ not built in CI: that needs Windows, the Android SDK/NDK and your keystore (see 
 
 - `apps/taskmanager/` the app
 - `apps/taskmanager-cli/` a console front end: prints one reading (CPU, memory, ten busiest processes)
-- `crates/domain/` the reading itself (CPU, memory, processes) as plain types, no OS and no UI
+- `crates/domain/` the reading itself (CPU, memory, battery, temperatures, disks, network) as plain types, no OS and no UI
+- `crates/linux-proc/` reading `/proc` (`meminfo`, `stat`, `self/stat`, `loadavg`), shared with the app
 - `crates/platform-linux/` fills that reading in on Linux
 - `crates/heartnet-kit/` code shared with the other apps (exit handling, settings, theme)
 - `crates/adbwire/` a small adb client (wireless-debugging pairing, TLS connection, shell) written for this app
@@ -95,16 +103,8 @@ not built in CI: that needs Windows, the Android SDK/NDK and your keystore (see 
 | [Building](docs/BUILD.md) | Toolchain, environment variables, the APK pipeline, desktop preview |
 | [Signing](docs/SIGNING.md) | Your own release keystore and fingerprints |
 | [Privacy](PRIVACY.md) | What stays on your phone, and what each permission is for |
-| [Contributing](CONTRIBUTING.md) | Tests, style, and how to send a change |
 | [Security](SECURITY.md) | Reporting a problem privately |
 | [Third-party notices](THIRD_PARTY.md) | Licences of everything that ships in the APK |
-
-## More apps
-
-- [Android Rust Gallery](https://github.com/HusniHeartnet/android-rust-gallery)
-- [Android Rust Files](https://github.com/HusniHeartnet/android-rust-files)
-- [Android Rust Notes](https://github.com/HusniHeartnet/android-rust-notes)
-- [Android Rust Home](https://github.com/HusniHeartnet/android-rust-home)
 
 ## Licence
 

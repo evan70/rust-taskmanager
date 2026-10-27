@@ -18,7 +18,7 @@ phone. See `.ai-factory/DESCRIPTION.md` for the full specification.
 - **Networking:** own `adbwire` crate (pairing, TLS, shell); loopback HTTP with a shared token
 - **Database / ORM:** none (settings in a text file, token and adb key in files on the phone)
 - **Build:** PowerShell — `tools/build/build-apk.ps1` (cargo-ndk → javac → d8 → aapt2 → zipalign → apksigner)
-- **Tests:** `cargo test`, 61 `#[test]` functions in 15 files (see `CONTRIBUTING.md`)
+- **Tests:** `cargo test`, 68 `#[test]` functions in 17 files (see `CONTRIBUTING.md`)
 
 ## Project Structure
 
@@ -29,8 +29,12 @@ android-rust-taskmanager/
 │   │                            hclient.rs (loopback client), adv.rs (detailed mode), ui_adv.rs (screens)
 │   └── android/                 AndroidManifest.xml, java/, libs/ (Shizuku jars), res/
 ├── apps/taskmanager-cli/        the CLI front end: prints one snapshot (CPU, memory, top 10)
-├── crates/domain/               the snapshot types (cpu, memory, processes) — no I/O, no OS, serde
-├── crates/platform-linux/       fills a snapshot in on Linux through sysinfo
+├── crates/domain/               the snapshot types (cpu, memory, battery, thermal, disks, network) —
+│                                no I/O, no OS, serde
+├── crates/linux-proc/           the one place that reads /proc (meminfo, stat, self/stat, loadavg);
+│                                the app's basic mode and the CLI both go through it
+├── crates/platform-linux/       fills a snapshot in on Linux: /proc through linux-proc, processes,
+│                                disks, network and sensors through sysinfo, battery through /sys
 ├── crates/heartnet-kit/         shared by every Heartnet app: lifecycle, insets, settings, theme,
 │                                diagnostics, time formatting + java/KitActivity.java
 ├── crates/adbwire/              the adb client written for this app (key, pairing, spake2, tls, conn)
@@ -54,7 +58,8 @@ android-rust-taskmanager/
 |------|---------|
 | `apps/taskmanager-cli/src/main.rs` | the console front end: one snapshot, top 10 processes by CPU |
 | `crates/domain/src/lib.rs` | `Snapshot`/`CpuInfo`/`MemoryInfo`/`Process`, `MemoryInfo::used_percent` |
-| `crates/platform-linux/src/lib.rs` | `snapshot()` — the only file that talks to `/proc` and `/sys` |
+| `crates/linux-proc/src/lib.rs` | `/proc` readers and parsers: `meminfo`, `cpu_times`, `self_ticks`, `load_average` |
+| `crates/platform-linux/src/lib.rs` | `snapshot()` — the only file that talks to `/proc`, `/sys` and `sysinfo` |
 | `apps/taskmanager/src/lib.rs` | app state (`TaskMgr`), tabs, screens, drawing, `android_main` |
 | `apps/taskmanager/src/sys.rs` | the only place that talks to the phone (`android` and `desktop` modules) |
 | `apps/taskmanager/src/sample.rs` | pure `/proc` parsers and the reading data model |
