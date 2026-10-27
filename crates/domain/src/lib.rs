@@ -27,19 +27,44 @@ pub struct CpuInfo {
     pub load_avg: [f32; 3],
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Memory and swap, in megabytes. This is the shape the helper sends on the phone and the shape
+/// the desktop backend fills in, so both ends of a detailed-mode reading use the same names.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct MemoryInfo {
-    pub total_mb: u64,
-    pub used_mb: u64,
-    pub available_mb: u64,
+    pub total: u64,
+    pub avail: u64,
+    pub cached: u64,
+    pub swap_total: u64,
+    pub swap_free: u64,
 }
 
 impl MemoryInfo {
+    /// From the raw byte counts the kernel reports (`/proc/meminfo`).
+    pub fn from_bytes(total: u64, avail: u64, cached: u64, swap_total: u64, swap_free: u64) -> Self {
+        const BYTES_PER_MB: u64 = 1024 * 1024;
+        Self {
+            total: total / BYTES_PER_MB,
+            avail: avail / BYTES_PER_MB,
+            cached: cached / BYTES_PER_MB,
+            swap_total: swap_total / BYTES_PER_MB,
+            swap_free: swap_free / BYTES_PER_MB,
+        }
+    }
+
+    pub fn used_mb(&self) -> u64 {
+        self.total.saturating_sub(self.avail)
+    }
+
+    pub fn swap_used_mb(&self) -> u64 {
+        self.swap_total.saturating_sub(self.swap_free)
+    }
+
     /// How much of the memory is in use, in percent. A machine that reports no memory at all
     /// (a container with nothing mounted, a kernel that will not say) counts as 0% instead of
     /// dividing by zero.
     pub fn used_percent(&self) -> f32 {
-        percent(self.used_mb, self.total_mb)
+        percent(self.used_mb(), self.total)
     }
 }
 
@@ -132,11 +157,11 @@ fn percent(part: u64, whole: u64) -> f32 {
 mod tests {
     use super::*;
 
-    fn memory(total_mb: u64, used_mb: u64) -> MemoryInfo {
+    fn memory(total: u64, used: u64) -> MemoryInfo {
         MemoryInfo {
-            total_mb,
-            used_mb,
-            available_mb: total_mb - used_mb,
+            total,
+            avail: total - used,
+            ..Default::default()
         }
     }
 
@@ -159,6 +184,15 @@ mod tests {
     #[test]
     fn used_percent_survives_a_machine_that_reports_no_memory() {
         assert_eq!(memory(0, 0).used_percent(), 0.0);
+    }
+
+    #[test]
+    fn bytes_become_megabytes_and_swap_is_counted() {
+        let gib = 1024 * 1024 * 1024;
+        let mem = MemoryInfo::from_bytes(8 * gib, 2 * gib, gib, 4 * gib, gib);
+        assert_eq!((mem.total, mem.avail, mem.cached), (8192, 2048, 1024));
+        assert_eq!(mem.used_mb(), 6144);
+        assert_eq!(mem.swap_used_mb(), 3072);
     }
 
     #[test]

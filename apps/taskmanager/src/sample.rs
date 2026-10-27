@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use linux_proc::Mem;
+use domain::MemoryInfo;
 
 pub const HISTORY_LEN: usize = 90;
 
@@ -105,7 +105,7 @@ impl Battery {
 
 #[derive(Clone, Default, Debug)]
 pub struct Sample {
-    pub mem: Mem,
+    pub mem: MemoryInfo,
     pub cpu_total: Option<f32>,
     /// Per core: (percent busy if known, current MHz if known, max MHz if known).
     pub cores: Vec<(Option<f32>, Option<u32>, Option<u32>)>,
@@ -147,7 +147,7 @@ fn push(q: &mut VecDeque<f32>, v: f32) {
 
 impl History {
     pub fn add(&mut self, s: &Sample) {
-        push(&mut self.mem, s.mem.used_pct());
+        push(&mut self.mem, s.mem.used_percent());
         if let Some(c) = s.cpu_total {
             push(&mut self.cpu, c);
         }
@@ -173,6 +173,11 @@ pub fn fmt_bytes(b: u64) -> String {
 
 pub fn fmt_speed(bytes_per_s: f64) -> String {
     format!("{}/s", fmt_bytes(bytes_per_s.max(0.0) as u64))
+}
+
+/// Megabytes as bytes, for the memory lines that print with `fmt_bytes`.
+pub fn mb_to_bytes(mb: u64) -> u64 {
+    mb * 1024 * 1024
 }
 
 /// "2d 3h", "5h 12m", "3m", "under a minute"
@@ -280,7 +285,7 @@ mod tests {
     #[test]
     fn history_keeps_only_the_latest_points() {
         let mut h = History::default();
-        let s = Sample { mem: Mem { total: 100, avail: 50, ..Default::default() }, cpu_total: Some(10.0), ..Default::default() };
+        let s = Sample { mem: MemoryInfo { total: 100, avail: 50, ..Default::default() }, cpu_total: Some(10.0), ..Default::default() };
         for _ in 0..HISTORY_LEN + 20 {
             h.add(&s);
         }

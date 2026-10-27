@@ -2813,6 +2813,7 @@ dependencies = [
  "adbwire",
  "android-activity",
  "android_logger",
+ "domain",
  "eframe",
  "heartnet-kit",
  "jni 0.21.1",

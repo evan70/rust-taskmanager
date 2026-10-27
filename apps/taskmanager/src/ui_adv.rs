@@ -55,10 +55,10 @@ impl TaskMgr {
 
         Self::card(ui, "Memory", |ui| {
             ui.horizontal(|ui| {
-                ui.label(RichText::new(format!("{:.0}%", s.mem.used_pct())).size(32.0).strong().color(Self::load_color(s.mem.used_pct())));
+                ui.label(RichText::new(format!("{:.0}%", s.mem.used_percent())).size(32.0).strong().color(Self::load_color(s.mem.used_percent())));
                 ui.label(RichText::new(format!("{} used of {}", hdata::gb(s.mem.used_mb()), hdata::gb(s.mem.total))).color(MUTED));
             });
-            Self::bar(ui, s.mem.used_pct() / 100.0, Self::load_color(s.mem.used_pct()), 10.0);
+            Self::bar(ui, s.mem.used_percent() / 100.0, Self::load_color(s.mem.used_percent()), 10.0);
             ui.add_space(6.0);
             Self::spark(ui, &hist.ram, 100.0, 40.0, GOOD);
             ui.add_space(4.0);

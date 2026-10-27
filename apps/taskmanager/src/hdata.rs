@@ -1,5 +1,6 @@
 //! What the helper sends, plus the small pieces of logic around it (history, filters, settings).
 
+use domain::MemoryInfo;
 use serde::Deserialize;
 use std::collections::VecDeque;
 
@@ -15,16 +16,6 @@ pub struct Core {
 pub struct Cpu {
     pub total: f32,
     pub cores: Vec<Core>,
-}
-
-#[derive(Deserialize, Clone, Default, Debug)]
-#[serde(default)]
-pub struct Mem {
-    pub total: u64,
-    pub avail: u64,
-    pub cached: u64,
-    pub swap_total: u64,
-    pub swap_free: u64,
 }
 
 #[derive(Deserialize, Clone, Default, Debug)]
@@ -61,23 +52,11 @@ pub struct Snapshot {
     pub uptime: f64,
     pub load: Vec<f32>,
     pub cpu: Cpu,
-    pub mem: Mem,
+    pub mem: MemoryInfo,
     pub temp: Temp,
     pub battery: Option<Battery>,
     pub nprocs: u32,
     pub procs: Vec<Proc>,
-}
-
-impl Mem {
-    pub fn used_mb(&self) -> u64 {
-        self.total.saturating_sub(self.avail)
-    }
-    pub fn used_pct(&self) -> f32 {
-        if self.total == 0 { 0.0 } else { 100.0 * self.used_mb() as f32 / self.total as f32 }
-    }
-    pub fn swap_used_mb(&self) -> u64 {
-        self.swap_total.saturating_sub(self.swap_free)
-    }
 }
 
 #[derive(Deserialize, Clone, Default, Debug)]
@@ -143,7 +122,7 @@ fn push(q: &mut VecDeque<f32>, v: f32) {
 impl History {
     pub fn add(&mut self, s: &Snapshot) {
         push(&mut self.cpu, s.cpu.total);
-        push(&mut self.ram, s.mem.used_pct());
+        push(&mut self.ram, s.mem.used_percent());
         if let Some(t) = s.temp.cpu.or(s.temp.battery) {
             push(&mut self.temp, t);
         }
@@ -306,7 +285,7 @@ mod tests {
         let s: Snapshot = serde_json::from_str(SNAP).unwrap();
         assert_eq!(s.cpu.cores, vec![Core { p: 65.0, mhz: 2016 }, Core { p: 3.0, mhz: 633 }]);
         assert_eq!(s.mem.used_mb(), 5158);
-        assert!((s.mem.used_pct() - 45.8).abs() < 0.1);
+        assert!((s.mem.used_percent() - 45.8).abs() < 0.1);
         assert_eq!(s.mem.swap_used_mb(), 957);
         assert_eq!((s.temp.cpu, s.temp.skin), (Some(46.9), None));
         assert!(s.battery.as_ref().unwrap().charging);

@@ -105,11 +105,13 @@ fn cpu_info(before: &[CpuTimes], after: &[CpuTimes]) -> CpuInfo {
 /// `/proc/meminfo`: the same file, read and parsed the same way as the app's basic mode.
 fn memory_info() -> Result<MemoryInfo, SnapshotError> {
     let mem = meminfo().ok_or(SnapshotError::NoMemory)?;
-    Ok(MemoryInfo {
-        total_mb: mem.total / BYTES_PER_MB,
-        used_mb: mem.used() / BYTES_PER_MB,
-        available_mb: mem.avail / BYTES_PER_MB,
-    })
+    Ok(MemoryInfo::from_bytes(
+        mem.total,
+        mem.avail,
+        mem.cached,
+        mem.swap_total,
+        mem.swap_free,
+    ))
 }
 
 fn processes(sys: &System) -> Vec<Process> {

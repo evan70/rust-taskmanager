@@ -14,7 +14,8 @@ mod ui_adv;
 use eframe::egui::{self, Color32, Context, RichText, Sense, Stroke, pos2, vec2};
 use heartnet_kit::settings::Settings;
 use heartnet_kit::theme::{BG, CARD, MUTED, ORANGE};
-use linux_proc::{CpuTimes, Mem, cpu_percent, cpu_times, meminfo, self_cpu_percent};
+use domain::MemoryInfo;
+use linux_proc::{CpuTimes, cpu_percent, cpu_times, meminfo, self_cpu_percent};
 use sample::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
@@ -239,11 +240,17 @@ impl TaskMgr {
         let now = Instant::now();
         let kv = parse_kv(&self.sys.sample_text());
         let mut s = Sample {
-            mem: meminfo().unwrap_or_else(|| Mem {
-                total: get_i64(&kv, "mem_total").unwrap_or(0).max(0) as u64,
-                avail: get_i64(&kv, "mem_avail").unwrap_or(0).max(0) as u64,
-                ..Default::default()
-            }),
+            // The kernel's own file first; on a phone that hides it, whatever the Java side could
+            // measure (both are byte counts).
+            mem: meminfo()
+                .map(|mem| MemoryInfo::from_bytes(mem.total, mem.avail, mem.cached, mem.swap_total, mem.swap_free))
+                .unwrap_or_else(|| MemoryInfo::from_bytes(
+                    get_i64(&kv, "mem_total").unwrap_or(0).max(0) as u64,
+                    get_i64(&kv, "mem_avail").unwrap_or(0).max(0) as u64,
+                    0,
+                    0,
+                    0,
+                )),
             ..Default::default()
         };
         s.low_memory = get_i64(&kv, "mem_low") == Some(1);
@@ -367,16 +374,16 @@ impl TaskMgr {
             if !detailed {
             Self::card(ui, "Memory", |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("{:.0}%", s.mem.used_pct())).size(30.0).strong().color(Self::load_color(s.mem.used_pct())));
-                    ui.label(RichText::new(format!("{} used of {}", fmt_bytes(s.mem.used()), fmt_bytes(s.mem.total))).color(MUTED));
+                    ui.label(RichText::new(format!("{:.0}%", s.mem.used_percent())).size(30.0).strong().color(Self::load_color(s.mem.used_percent())));
+                    ui.label(RichText::new(format!("{} used of {}", fmt_bytes(mb_to_bytes(s.mem.used_mb())), fmt_bytes(mb_to_bytes(s.mem.total)))).color(MUTED));
                 });
-                Self::bar(ui, s.mem.used_pct() / 100.0, Self::load_color(s.mem.used_pct()), 8.0);
+                Self::bar(ui, s.mem.used_percent() / 100.0, Self::load_color(s.mem.used_percent()), 8.0);
                 ui.add_space(6.0);
                 Self::spark(ui, &self.history.mem, 100.0, 54.0, ORANGE);
                 ui.add_space(4.0);
-                Self::row(ui, "Available", &fmt_bytes(s.mem.avail));
+                Self::row(ui, "Available", &fmt_bytes(mb_to_bytes(s.mem.avail)));
                 if s.mem.swap_total > 0 {
-                    Self::row(ui, "Swap in use", &format!("{} of {}", fmt_bytes(s.mem.swap_used()), fmt_bytes(s.mem.swap_total)));
+                    Self::row(ui, "Swap in use", &format!("{} of {}", fmt_bytes(mb_to_bytes(s.mem.swap_used_mb())), fmt_bytes(mb_to_bytes(s.mem.swap_total))));
                 }
                 if s.low_memory {
                     ui.label(RichText::new("Android says memory is low").color(BAD));

@@ -62,8 +62,8 @@ android-rust-taskmanager/
 | `crates/platform-linux/src/lib.rs` | `snapshot()` — the only file that talks to `/proc`, `/sys` and `sysinfo` |
 | `apps/taskmanager/src/lib.rs` | app state (`TaskMgr`), tabs, screens, drawing, `android_main` |
 | `apps/taskmanager/src/sys.rs` | the only place that talks to the phone (`android` and `desktop` modules) |
-| `apps/taskmanager/src/sample.rs` | pure `/proc` parsers and the reading data model |
-| `apps/taskmanager/src/hdata.rs` | `serde` models of the helper's replies, sorting, filtering |
+| `apps/taskmanager/src/sample.rs` | the app's own reading (`Sample`, `History`, Java battery); `/proc` parsing is in `linux-proc`, memory is `domain::MemoryInfo` |
+| `apps/taskmanager/src/hdata.rs` | `serde` models of the helper's replies (memory is the same `domain::MemoryInfo`), sorting, filtering |
 | `apps/taskmanager/src/hclient.rs` | loopback HTTP client and its background threads |
 | `apps/taskmanager/src/adv.rs` | detailed mode: key, pairing, starting the helper, Shizuku, plain-words errors |
 | `apps/taskmanager/src/ui_adv.rs` | the detailed-mode screens (processes, startup, setup, sheets) |

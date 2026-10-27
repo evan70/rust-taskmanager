@@ -57,10 +57,17 @@ fn print_text(snapshot: &Snapshot) {
     println!("=== Memory ===");
     println!(
         "Used: {} MB / {} MB ({:.1}%)",
-        snapshot.memory.used_mb,
-        snapshot.memory.total_mb,
+        snapshot.memory.used_mb(),
+        snapshot.memory.total,
         snapshot.memory.used_percent()
     );
+    if snapshot.memory.swap_total > 0 {
+        println!(
+            "Swap in use: {} MB of {} MB",
+            snapshot.memory.swap_used_mb(),
+            snapshot.memory.swap_total
+        );
+    }
 
     println!();
     println!("=== Battery ===");
