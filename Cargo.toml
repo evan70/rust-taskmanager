@@ -1,6 +1,22 @@
 [workspace]
 resolver = "3"
-members = ["apps/taskmanager", "crates/heartnet-kit", "crates/adbwire"]
+members = [
+    "apps/taskmanager",
+    "apps/taskmanager-cli",
+    "crates/heartnet-kit",
+    "crates/adbwire",
+    "crates/domain",
+    "crates/platform-linux",
+]
+
+[workspace.package]
+edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/evan70/rust-taskmanager"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+sysinfo = "0.33"
 
 [profile.release]
 opt-level = 3

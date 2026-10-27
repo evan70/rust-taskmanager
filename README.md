@@ -78,6 +78,9 @@ not built in CI: that needs Windows, the Android SDK/NDK and your keystore (see 
 ## Layout
 
 - `apps/taskmanager/` the app
+- `apps/taskmanager-cli/` a console front end: prints one reading (CPU, memory, ten busiest processes)
+- `crates/domain/` the reading itself (CPU, memory, processes) as plain types, no OS and no UI
+- `crates/platform-linux/` fills that reading in on Linux
 - `crates/heartnet-kit/` code shared with the other apps (exit handling, settings, theme)
 - `crates/adbwire/` a small adb client (wireless-debugging pairing, TLS connection, shell) written for this app
 - `helper/` the small program the app starts on the phone to read what apps cannot see; it ships inside the APK
