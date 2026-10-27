@@ -104,12 +104,19 @@ build needs the SDK, the JDK and PowerShell, so this is the cheap way to keep it
 
 ```
 export ANDROID_NDK_HOME=/path/to/android-ndk-r27c
-make check-android
+make check-android            # debug; warnings are errors, like `make lint`
+make check-android-release    # the profile the APK ships: LTO, one codegen unit, stripped
 ```
 
-It compiles the app's library (`libtaskmgr.so`) and the helper for `aarch64-linux-android` with the
-NDK's clang, at the API level the APK uses (30). It needs the NDK and the Rust target and nothing else,
-which is why CI runs it on Linux on every push (`.github/workflows/android.yml`).
+Both compile the app's library (`libtaskmgr.so` — the file the APK ships) and the helper for
+`aarch64-linux-android` with the NDK's clang, at the API level the APK uses (30). They need the NDK and
+the Rust target and nothing else, which is why CI runs them on Linux: the debug check on every push,
+the release one on `main` (`.github/workflows/android.yml`), where the minutes of LTO are worth
+spending.
+
+A release build is also the cheap way to see what the phone gets: `libtaskmgr.so` comes out around
+6 MB and stripped, and it still exports the entry point a native activity needs
+(`ANativeActivity_onCreate`).
 
 On a Linux machine that has no SDK, a bare NDK is enough; if you keep one inside the project, put it in
 `.android-ndk/` (gitignored) so `export ANDROID_NDK_HOME=$PWD/.android-ndk/android-ndk-r27c` works.

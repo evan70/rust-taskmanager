@@ -100,19 +100,37 @@ helper: ## Build the on-phone helper for arm64 Android (needs cargo-ndk and the 
 
 # The app has code that only exists on Android (`#[cfg(target_os = "android")]`: the JNI glue in
 # sys.rs, the native-activity entry point, heartnet-kit's android module). Nothing else in this file
-# compiles it — `make ci` builds the desktop target and the APK is assembled on Windows — so this is
-# the check that keeps it from rotting. It needs the NDK and nothing else.
+# compiles it — `make ci` builds the desktop target and the APK is assembled on Windows — so these are
+# the checks that keep it from rotting. They need the NDK and nothing else.
+#
+# The environment both checks run in: the NDK's clang for the app's library and the helper, and the
+# same warnings-as-errors bar `make lint` holds the host build to. (`RUSTFLAGS` is appended to, not
+# replaced, so anything the caller set stays.)
+define android_env
+test -n "$${ANDROID_NDK_HOME:-}" || { echo "ANDROID_NDK_HOME is not set (needs NDK r27c — see docs/BUILD.md)"; exit 1; }
+prebuilt=$$(echo "$$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*)
+clang="$$prebuilt/bin/aarch64-linux-android$(ANDROID_API)-clang"
+[ -x "$$clang" ] || { echo "no $$clang — is ANDROID_NDK_HOME a full NDK? (see docs/BUILD.md)"; exit 1; }
+export CC_aarch64_linux_android="$$clang" CXX_aarch64_linux_android="$$clang++"
+export AR_aarch64_linux_android="$$prebuilt/bin/llvm-ar"
+export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$$clang"
+export RUSTFLAGS="$${RUSTFLAGS:-} -D warnings"
+endef
+
 .PHONY: check-android
-check-android: ## Compile the app and the helper for arm64 Android (needs ANDROID_NDK_HOME)
-	@test -n "$${ANDROID_NDK_HOME:-}" || { echo "ANDROID_NDK_HOME is not set (needs NDK r27c — see docs/BUILD.md)"; exit 1; }
-	prebuilt=$$(echo "$$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*)
-	clang="$$prebuilt/bin/aarch64-linux-android$(ANDROID_API)-clang"
-	[ -x "$$clang" ] || { echo "no $$clang — is ANDROID_NDK_HOME a full NDK? (see docs/BUILD.md)"; exit 1; }
-	export CC_aarch64_linux_android="$$clang" CXX_aarch64_linux_android="$$clang++"
-	export AR_aarch64_linux_android="$$prebuilt/bin/llvm-ar"
-	export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$$clang"
+check-android: ## Compile the app and the helper for arm64 Android, warnings are errors (needs the NDK)
+	@$(call android_env)
 	$(CARGO) build --lib --target aarch64-linux-android $(CARGOFLAGS)
 	cd $(HELPER_DIR) && $(CARGO) build --target aarch64-linux-android $(CARGOFLAGS)
+
+# The release profile is what the APK ships (LTO, one codegen unit, stripped, panic=abort), so this is
+# the profile worth compiling when the NDK, Rust or an Android dependency changes. Slow: `--lib` with
+# LTO takes minutes, which is why CI runs the debug check above on every push and this one on `main`.
+.PHONY: check-android-release
+check-android-release: ## The same in the profile the APK ships (Release + LTO; needs the NDK)
+	@$(call android_env)
+	$(CARGO) build --release --lib --target aarch64-linux-android $(CARGOFLAGS)
+	cd $(HELPER_DIR) && $(CARGO) build --release --target aarch64-linux-android $(CARGOFLAGS)
 
 .PHONY: android-check
 android-check: ## Check whether this machine can build the APK, and say what is missing
@@ -161,7 +179,7 @@ clean-apk: ## Remove the APK build output (keeps the Rust target directories)
 .PHONY: help
 help: ## Show this help
 	@awk 'BEGIN {FS = ":.*##"; printf "Usage:\n  make \033[36m<target>\033[0m\n"} \
-		/^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2} \
+		/^[a-zA-Z_-]+:.*?## / {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2} \
 		/^##@/ {printf "\n\033[1m%s\033[0m\n", substr($$0, 5)}' $(MAKEFILE_LIST)
 	@echo
-	@echo "`check-android` needs the NDK; the APK targets need PowerShell + the SDK too; everything else is plain cargo."
+	@echo "check-android needs only the NDK; the APK targets need PowerShell + the SDK too; the rest is plain cargo."

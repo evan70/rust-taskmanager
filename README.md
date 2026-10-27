@@ -65,8 +65,8 @@ powershell -File build-apk.ps1
 ```
 
 `make help` lists every target (`make ci` runs lint, tests and build; `make check-android` compiles the
-Android side without the SDK; `make android-check` says what the APK build is missing; `make apk`
-builds it).
+Android side without the SDK and `make check-android-release` the profile the APK ships;
+`make android-check` says what the APK build is missing; `make apk` builds it).
 
 APKs are signed with your own key, see [docs/SIGNING.md](docs/SIGNING.md). The whole pipeline, the
 desktop preview and what each tool is for: [docs/BUILD.md](docs/BUILD.md).

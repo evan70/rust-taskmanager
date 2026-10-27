@@ -116,6 +116,9 @@ fn load_or_make_token(dir: &std::path::Path) -> String {
     token
 }
 
+/// Where the desktop preview keeps its settings, logs and token. On a phone those live in the folder
+/// Android gives the activity, so this only exists off Android.
+#[cfg(not(target_os = "android"))]
 fn data_dir() -> PathBuf {
     std::env::var_os("TASKMGR_DIR").map(PathBuf::from).unwrap_or_else(|| std::env::temp_dir().join("taskmgr-data"))
 }

@@ -11,6 +11,9 @@ pub fn image_from_argb(px: &[i32], size: usize) -> ColorImage {
     ColorImage::from_rgba_unmultiplied([size, size], &rgba)
 }
 
+/// Wall clock in milliseconds. Only the desktop preview's made-up readings need it; on a phone the
+/// numbers come from Android, which stamps them itself.
+#[cfg(not(target_os = "android"))]
 pub fn now_ms() -> i64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
 }
@@ -207,15 +210,6 @@ mod android {
                 Ok(out)
             })
             .unwrap_or_default()
-        }
-
-        fn pkg_bool(&self, method: &str, pkg: &str) -> bool {
-            with_env(&self.app, |env, act| {
-                let c = class(env, act, HELPER)?;
-                let p = env.new_string(pkg)?;
-                env.call_static_method(&c, method, "(Landroid/app/Activity;Ljava/lang/String;)Z", &[JValue::Object(act), JValue::Object(&p)])?.z()
-            })
-            .unwrap_or(false)
         }
 
         fn pkg_void(&self, method: &str, pkg: &str) {

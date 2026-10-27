@@ -44,7 +44,15 @@ jobs:
         with:
           ndk-version: r27c
 
-      - name: Compile for arm64 Android
+      - name: Compile for arm64 Android (debug, warnings are errors)
         run: make check-android
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+
+      # The profile the APK ships: Release with LTO and a single codegen unit. Minutes, not seconds,
+      # so pull requests get the debug check above and only `main` pays for this one.
+      - name: Compile the shipped profile (main only)
+        if: github.event_name == 'push'
+        run: make check-android-release
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
