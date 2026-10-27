@@ -18,7 +18,7 @@ phone. See `.ai-factory/DESCRIPTION.md` for the full specification.
 - **Networking:** own `adbwire` crate (pairing, TLS, shell); loopback HTTP with a shared token
 - **Database / ORM:** none (settings in a text file, token and adb key in files on the phone)
 - **Build:** PowerShell — `tools/build/build-apk.ps1` (cargo-ndk → javac → d8 → aapt2 → zipalign → apksigner)
-- **Tests:** `cargo test`, 68 `#[test]` functions in 17 files
+- **Tests:** `cargo test`, 69 `#[test]` functions in 17 files
 
 ## Project Structure
 
