@@ -209,10 +209,6 @@ fn thermal_zones() -> Vec<(String, f64)> {
     zones
 }
 
-fn opt(v: Option<f64>) -> String {
-    v.map_or("null".to_string(), |x| format!("{x:.1}"))
-}
-
 fn sampler(state: Arc<State>) {
     let pkb = page_kb();
     let ncores = read_cpu().len().saturating_sub(1);
@@ -280,18 +276,19 @@ fn sampler(state: Arc<State>) {
         let uptime: f64 = fs::read_to_string("/proc/uptime").ok().and_then(|s| s.split_whitespace().next().and_then(|x| x.parse().ok())).unwrap_or(0.0);
         let now_ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
         let bat = battery.map_or("null".to_string(), |(level, state, temp)| format!("{{\"percent\":{level},\"state\":\"{state}\",\"temperature_c\":{temp:.1}}}"));
+        let thermals: Vec<String> = [("cpu", th.cpu), ("gpu", th.gpu), ("battery", th.battery), ("skin", th.skin)]
+            .iter()
+            .filter_map(|(name, celsius)| celsius.map(|c| format!("{{\"name\":\"{name}\",\"celsius\":{c:.1}}}")))  
+            .collect();
 
         let json = format!(
             "{{\"t\":{now_ms},\"uptime\":{uptime:.0},\"cpu\":{{\"total_percent\":{total:.1},\"cores\":[{}],\"load_avg\":[{}]}},\
              \"mem\":{{\"total\":{mt},\"avail\":{ma},\"cached\":{mc},\"swap_total\":{st},\"swap_free\":{sf}}},\
-             \"temp\":{{\"cpu\":{},\"gpu\":{},\"battery\":{},\"skin\":{}}},\"battery\":{bat},\
+             \"thermals\":[{}],\"battery\":{bat},\n
              \"nprocs\":{nprocs},\"procs\":[{}]}}",
             cores.join(","),
             load.join(","),
-            opt(th.cpu),
-            opt(th.gpu),
-            opt(th.battery),
-            opt(th.skin),
+            thermals.join(","),
             procs.join(",")
         );
         *state.snapshot.lock().unwrap() = json;

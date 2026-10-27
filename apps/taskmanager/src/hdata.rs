@@ -1,17 +1,8 @@
 //! What the helper sends, plus the small pieces of logic around it (history, filters, settings).
 
-use domain::{BatteryInfo, CpuInfo, MemoryInfo, Process};
+use domain::{BatteryInfo, CpuInfo, MemoryInfo, Process, ThermalZone, celsius_of};
 use serde::Deserialize;
 use std::collections::VecDeque;
-
-#[derive(Deserialize, Clone, Default, Debug)]
-#[serde(default)]
-pub struct Temp {
-    pub cpu: Option<f32>,
-    pub gpu: Option<f32>,
-    pub battery: Option<f32>,
-    pub skin: Option<f32>,
-}
 
 #[derive(Deserialize, Clone, Default, Debug)]
 #[serde(default)]
@@ -20,7 +11,8 @@ pub struct Snapshot {
     pub uptime: f64,
     pub cpu: CpuInfo,
     pub mem: MemoryInfo,
-    pub temp: Temp,
+    /// The sensors the helper could read, by the names it gives them (`cpu`, `gpu`, `battery`, `skin`).
+    pub thermals: Vec<ThermalZone>,
     pub battery: Option<BatteryInfo>,
     pub nprocs: u32,
     pub procs: Vec<Process>,
@@ -90,7 +82,7 @@ impl History {
     pub fn add(&mut self, s: &Snapshot) {
         push(&mut self.cpu, s.cpu.total_percent);
         push(&mut self.ram, s.mem.used_percent());
-        if let Some(t) = s.temp.cpu.or(s.temp.battery) {
+        if let Some(t) = celsius_of(&s.thermals, "cpu").or_else(|| celsius_of(&s.thermals, "battery")) {
             push(&mut self.temp, t);
         }
         if self.cores.len() != s.cpu.cores.len() {
@@ -244,7 +236,7 @@ mod tests {
 
     const SNAP: &str = r#"{"t":1,"uptime":1206,"cpu":{"total_percent":26.0,"cores":[{"percent":65.0,"mhz":2016},{"percent":3.0,"mhz":633}],"load_avg":[4.75,5.17,4.04]},
         "mem":{"total":11272,"avail":6114,"cached":4962,"swap_total":12287,"swap_free":11330},
-        "temp":{"cpu":46.9,"gpu":52.9,"battery":37.7,"skin":null},"battery":{"percent":100,"state":"charging","temperature_c":37.8},
+        "thermals":[{"name":"cpu","celsius":46.9},{"name":"gpu","celsius":52.9},{"name":"battery","celsius":37.7}],"battery":{"percent":100,"state":"charging","temperature_c":37.8},
         "nprocs":278,"procs":[{"pid":1,"name":"com.miui.gallery","cpu_percent":85.6,"memory_mb":640,"threads":30},{"pid":2,"name":"/system/bin/surfaceflinger","cpu_percent":3.0,"memory_mb":64,"threads":12}]}"#;
 
     #[test]
@@ -254,7 +246,7 @@ mod tests {
         assert_eq!(s.mem.used_mb(), 5158);
         assert!((s.mem.used_percent() - 45.8).abs() < 0.1);
         assert_eq!(s.mem.swap_used_mb(), 957);
-        assert_eq!((s.temp.cpu, s.temp.skin), (Some(46.9), None));
+        assert_eq!((celsius_of(&s.thermals, "cpu"), celsius_of(&s.thermals, "skin")), (Some(46.9), None));
         assert_eq!(s.battery.as_ref().unwrap().state, domain::BatteryState::Charging);
         assert_eq!(s.battery.as_ref().unwrap().temperature_c, Some(37.8));
         assert_eq!((s.cpu.total_percent, s.cpu.load_avg[0]), (26.0, 4.75));
@@ -333,3 +325,4 @@ mod tests {
         assert_eq!(gb(2048), "2.0 GB");
     }
 }
+

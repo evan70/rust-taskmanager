@@ -67,7 +67,8 @@ impl TaskMgr {
 
         Self::card(ui, "Temperatures", |ui| {
             ui.horizontal_wrapped(|ui| {
-                for (name, v) in [("CPU", s.temp.cpu), ("GPU", s.temp.gpu), ("Battery", s.temp.battery.or(s.battery.as_ref().and_then(|b| b.temperature_c))), ("Skin", s.temp.skin)] {
+                let sensor = |name| domain::celsius_of(&s.thermals, name);
+                for (name, v) in [("CPU", sensor("cpu")), ("GPU", sensor("gpu")), ("Battery", sensor("battery").or(s.battery.as_ref().and_then(|b| b.temperature_c))), ("Skin", sensor("skin"))] {
                     if let Some(c) = v {
                         ui.label(RichText::new(name).color(MUTED));
                         let col = match hdata::temp_level(c) {

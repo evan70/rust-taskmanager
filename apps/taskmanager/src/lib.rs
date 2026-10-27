@@ -14,7 +14,7 @@ mod ui_adv;
 use eframe::egui::{self, Color32, Context, RichText, Sense, Stroke, pos2, vec2};
 use heartnet_kit::settings::Settings;
 use heartnet_kit::theme::{BG, CARD, MUTED, ORANGE};
-use domain::MemoryInfo;
+use domain::{DiskInfo, MemoryInfo};
 use linux_proc::{CpuTimes, cpu_percent, cpu_times, meminfo, self_cpu_percent};
 use sample::*;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -257,12 +257,14 @@ impl TaskMgr {
         s.battery = Battery::from_kv(&kv);
         s.thermal = get_i64(&kv, "thermal").unwrap_or(-1);
         s.headroom = get_f64(&kv, "headroom");
-        s.storage_total = get_i64(&kv, "storage_total").unwrap_or(0).max(0) as u64;
-        s.storage_free = get_i64(&kv, "storage_free").unwrap_or(0).max(0) as u64;
+        s.storage = DiskInfo::from_bytes(
+            get_i64(&kv, "storage_total").unwrap_or(0).max(0) as u64,
+            get_i64(&kv, "storage_free").unwrap_or(0).max(0) as u64,
+        );
         s.uptime_ms = get_i64(&kv, "uptime_ms").unwrap_or(0);
         s.power_save = get_i64(&kv, "power_save") == Some(1);
-        s.net_rx_total = get_i64(&kv, "net_rx").unwrap_or(0).max(0) as u64;
-        s.net_tx_total = get_i64(&kv, "net_tx").unwrap_or(0).max(0) as u64;
+        s.network.total_received_bytes = get_i64(&kv, "net_rx").unwrap_or(0).max(0) as u64;
+        s.network.total_transmitted_bytes = get_i64(&kv, "net_tx").unwrap_or(0).max(0) as u64;
 
         let cpu_now = cpu_times();
         let self_ticks = linux_proc::self_ticks().unwrap_or(0);
@@ -270,8 +272,8 @@ impl TaskMgr {
         let ncores = if ncores == 0 { cpu_now.len().saturating_sub(1) } else { ncores };
         if let Some(prev) = &self.prev {
             let dt = now.duration_since(prev.at).as_secs_f64();
-            s.net_down = rate(prev.rx, s.net_rx_total, dt);
-            s.net_up = rate(prev.tx, s.net_tx_total, dt);
+            s.network.received_bytes_per_second = rate(prev.rx, s.network.total_received_bytes, dt) as u64;
+            s.network.transmitted_bytes_per_second = rate(prev.tx, s.network.total_transmitted_bytes, dt) as u64;
             s.self_cpu = self_cpu_percent(prev.self_ticks, self_ticks, dt);
             if let (Some(p), Some(c)) = (prev.cpu.first(), cpu_now.first()) {
                 s.cpu_total = cpu_percent(*p, *c);
@@ -286,7 +288,7 @@ impl TaskMgr {
             s.cores.push((load, mhz("scaling_cur_freq"), mhz("cpuinfo_max_freq")));
         }
 
-        self.prev = Some(Prev { at: now, cpu: cpu_now, self_ticks, rx: s.net_rx_total, tx: s.net_tx_total });
+        self.prev = Some(Prev { at: now, cpu: cpu_now, self_ticks, rx: s.network.total_received_bytes, tx: s.network.total_transmitted_bytes });
         self.history.add(&s);
         self.sample = s;
         self.kv = kv;
@@ -468,27 +470,27 @@ impl TaskMgr {
             }
 
             Self::card(ui, "Storage", |ui| {
-                let used = s.storage_total.saturating_sub(s.storage_free);
-                let pct = if s.storage_total == 0 { 0.0 } else { 100.0 * used as f32 / s.storage_total as f32 };
+                let disk = &s.storage;
+                let pct = disk.used_percent();
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!("{pct:.0}%")).size(30.0).strong().color(if pct > 90.0 { BAD } else { GOOD }));
-                    ui.label(RichText::new(format!("{} used of {}", fmt_bytes(used), fmt_bytes(s.storage_total))).color(MUTED));
+                    ui.label(RichText::new(format!("{} used of {}", hdata::gb(disk.used_mb()), hdata::gb(disk.total_mb))).color(MUTED));
                 });
                 Self::bar(ui, pct / 100.0, if pct > 90.0 { BAD } else { GOOD }, 8.0);
                 ui.add_space(4.0);
-                Self::row(ui, "Free", &fmt_bytes(s.storage_free));
+                Self::row(ui, "Free", &hdata::gb(disk.available_mb));
             });
 
             Self::card(ui, "Network", |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("\u{2193} {}", fmt_speed(s.net_down))).size(18.0).strong());
-                    ui.label(RichText::new(format!("\u{2191} {}", fmt_speed(s.net_up))).size(18.0).strong().color(MUTED));
+                    ui.label(RichText::new(format!("\u{2193} {}", fmt_speed(s.network.received_bytes_per_second as f64))).size(18.0).strong());
+                    ui.label(RichText::new(format!("\u{2191} {}", fmt_speed(s.network.transmitted_bytes_per_second as f64))).size(18.0).strong().color(MUTED));
                 });
                 let top = self.history.down.iter().cloned().fold(100_000.0f32, f32::max);
                 Self::spark(ui, &self.history.down, top, 40.0, ORANGE);
                 ui.add_space(4.0);
-                Self::row(ui, "Received since start", &fmt_bytes(s.net_rx_total));
-                Self::row(ui, "Sent since start", &fmt_bytes(s.net_tx_total));
+                Self::row(ui, "Received since start", &fmt_bytes(s.network.total_received_bytes));
+                Self::row(ui, "Sent since start", &fmt_bytes(s.network.total_transmitted_bytes));
             });
 
             Self::card(ui, "This phone", |ui| {

@@ -4,7 +4,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use domain::MemoryInfo;
+use domain::{DiskInfo, MemoryInfo, NetworkInfo};
 
 pub const HISTORY_LEN: usize = 90;
 
@@ -113,12 +113,10 @@ pub struct Sample {
     pub battery: Option<Battery>,
     pub thermal: i64,
     pub headroom: Option<f64>,
-    pub storage_total: u64,
-    pub storage_free: u64,
-    pub net_down: f64,
-    pub net_up: f64,
-    pub net_rx_total: u64,
-    pub net_tx_total: u64,
+    /// The one volume Android reports to the app: a size and free space, with no name.
+    pub storage: DiskInfo,
+    /// The phone as a whole: no interface name, just the traffic since boot.
+    pub network: NetworkInfo,
     pub uptime_ms: i64,
     pub power_save: bool,
     pub low_memory: bool,
@@ -154,7 +152,7 @@ impl History {
         if let Some(t) = s.battery.as_ref().and_then(|b| b.temp_c) {
             push(&mut self.temp, t);
         }
-        push(&mut self.down, s.net_down as f32);
+        push(&mut self.down, s.network.received_bytes_per_second as f32);
     }
 }
 

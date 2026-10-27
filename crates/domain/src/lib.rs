@@ -132,7 +132,8 @@ pub struct ThermalZone {
     pub celsius: f32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct DiskInfo {
     pub name: String,
     pub mount_point: String,
@@ -142,6 +143,19 @@ pub struct DiskInfo {
 }
 
 impl DiskInfo {
+    /// From raw byte counts, for a volume the machine will not name: the phone reports one file
+    /// system through Java and says nothing about where it is mounted, the desktop knows both.
+    pub fn from_bytes(total: u64, available: u64) -> Self {
+        const BYTES_PER_MB: u64 = 1024 * 1024;
+        Self {
+            name: String::new(),
+            mount_point: String::new(),
+            file_system: String::new(),
+            total_mb: total / BYTES_PER_MB,
+            available_mb: available / BYTES_PER_MB,
+        }
+    }
+
     pub fn used_mb(&self) -> u64 {
         self.total_mb.saturating_sub(self.available_mb)
     }
@@ -153,13 +167,23 @@ impl DiskInfo {
 
 /// One network interface: how fast it is moving bytes right now, and how much it has moved since
 /// the machine booted.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct NetworkInfo {
     pub interface: String,
     pub received_bytes_per_second: u64,
     pub transmitted_bytes_per_second: u64,
     pub total_received_bytes: u64,
     pub total_transmitted_bytes: u64,
+}
+
+/// The temperature of the first sensor called `name`. The helper names its sensors `cpu`, `gpu`,
+/// `battery` and `skin`; the desktop uses whatever labels the kernel writes.
+pub fn celsius_of(zones: &[ThermalZone], name: &str) -> Option<f32> {
+    zones
+        .iter()
+        .find(|zone| zone.name == name)
+        .map(|zone| zone.celsius)
 }
 
 fn percent(part: u64, whole: u64) -> f32 {
@@ -224,6 +248,26 @@ mod tests {
         assert_eq!(cpu.cores[1].mhz, 633);
         assert_eq!((cpu.cores[0].percent, cpu.cores[1].percent), (10.0, 14.0));
         assert_eq!(CpuInfo::default().cores.len(), 0);
+    }
+
+    #[test]
+    fn a_disk_can_be_built_from_bytes_when_it_has_no_name() {
+        let disk = DiskInfo::from_bytes(500 * 1024 * 1024 * 1024, 100 * 1024 * 1024 * 1024);
+        assert_eq!((disk.total_mb, disk.available_mb), (512_000, 102_400));
+        assert_eq!(disk.used_mb(), 409_600);
+        assert_eq!(disk.used_percent(), 80.0);
+        assert!(disk.name.is_empty() && disk.mount_point.is_empty());
+    }
+
+    #[test]
+    fn a_temperature_is_found_by_the_name_the_producer_uses() {
+        let zones = vec![
+            ThermalZone { name: "cpu".to_string(), celsius: 46.9 },
+            ThermalZone { name: "battery".to_string(), celsius: 37.5 },
+        ];
+        assert_eq!(celsius_of(&zones, "battery"), Some(37.5));
+        assert_eq!(celsius_of(&zones, "skin"), None);
+        assert_eq!(celsius_of(&[], "cpu"), None);
     }
 
     #[test]
