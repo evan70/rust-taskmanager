@@ -7,3 +7,10 @@ version-code.txt
 local.properties
 *.log
 .env
+
+# Local agent tooling: skills, AI Factory context, MCP server config.
+.agents/
+.ai-factory/
+.ai-factory.json
+.codex/
+skills-lock.json
