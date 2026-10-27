@@ -8,3 +8,4 @@ repository.workspace = true
 [dependencies]
 domain = { path = "../../crates/domain" }
 platform-linux = { path = "../../crates/platform-linux" }
+serde_json = "1"

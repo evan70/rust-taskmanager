@@ -2798,6 +2798,7 @@ version = "0.1.0"
 dependencies = [
  "domain",
  "platform-linux",
+ "serde_json",
 ]
 
 [[package]]
